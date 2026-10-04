@@ -1,10 +1,14 @@
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../models/collection.dart';
 import '../models/track.dart';
+import '../services/device_library.dart';
 import '../state/player_controller.dart';
+import 'icons.dart';
 import 'sheets.dart';
 import 'theme.dart';
 
@@ -15,12 +19,30 @@ String fmt(Duration? d) {
   return '$m:$s';
 }
 
+String compact(int n) {
+  if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(n >= 10000000 ? 0 : 1)}M';
+  if (n >= 1000) return '${(n / 1000).toStringAsFixed(n >= 10000 ? 0 : 1)}K';
+  return '$n';
+}
+
+/// Image provider for a track's cover, from the web or the phone's library.
+Future<ImageProvider?> artworkProvider(Track t) async {
+  if (t.artworkUrl != null) return NetworkImage(t.artworkUrl!);
+  if (t.mediaId != null) {
+    final b = await DeviceLibrary.artwork(t.mediaId!);
+    if (b != null) return MemoryImage(b);
+  }
+  return null;
+}
+
 class Artwork extends StatelessWidget {
-  const Artwork(this.track, {super.key, this.size = 48, this.radius = 10, this.shadow = false});
+  const Artwork(this.track,
+      {super.key, this.size = 48, this.radius = 10, this.shadow = false, this.icon});
   final Track? track;
   final double size;
   final double radius;
   final bool shadow;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -33,13 +55,39 @@ class Artwork extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: dark ? [p.line, p.card] : [p.ink.withValues(alpha: 0.85), p.ink],
+          colors: dark ? [p.line, p.card] : [const Color(0xFF3A3B42), p.ink],
         ),
       ),
-      child: Icon(Icons.graphic_eq_rounded,
-          size: size * 0.4, color: dark ? p.sub : p.onInk.withValues(alpha: 0.7)),
+      child: Icon(icon ?? AppIcons.music,
+          size: size * 0.38, color: dark ? p.sub : Colors.white.withValues(alpha: 0.75)),
     );
-    final url = track?.artworkUrl;
+
+    Widget image;
+    final t = track;
+    if (t?.artworkUrl != null) {
+      image = Image.network(
+        t!.artworkUrl!,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+        webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
+        frameBuilder: (_, child, frame, sync) => sync || frame != null
+            ? child
+            : placeholder,
+        errorBuilder: (_, _, _) => placeholder,
+      );
+    } else if (t?.mediaId != null) {
+      image = FutureBuilder<Uint8List?>(
+        future: DeviceLibrary.artwork(t!.mediaId!),
+        builder: (_, snap) => snap.data == null
+            ? placeholder
+            : Image.memory(snap.data!, width: size, height: size, fit: BoxFit.cover, gaplessPlayback: true),
+      );
+    } else {
+      image = placeholder;
+    }
+
     return Container(
       width: size,
       height: size,
@@ -48,34 +96,65 @@ class Artwork extends StatelessWidget {
         boxShadow: shadow
             ? [
                 BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.28),
-                    blurRadius: 32,
-                    offset: const Offset(0, 16)),
+                    color: Colors.black.withValues(alpha: 0.25),
+                    blurRadius: 30,
+                    offset: const Offset(0, 14)),
               ]
             : null,
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(radius),
-        child: url == null
-            ? placeholder
-            : Image.network(url,
-                width: size,
-                height: size,
-                fit: BoxFit.cover,
-                gaplessPlayback: true,
-                // Some Audius content nodes don't send CORS headers; let the
-                // browser render those with an <img> element instead.
-                webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
-                frameBuilder: (_, child, frame, sync) => sync || frame != null
-                    ? child
-                    : placeholder,
-                errorBuilder: (_, _, _) => placeholder),
+      child: ClipRRect(borderRadius: BorderRadius.circular(radius), child: image),
+    );
+  }
+}
+
+/// 2×2 grid of covers for playlists the user made.
+class Mosaic extends StatelessWidget {
+  const Mosaic(this.tracks, {super.key, this.size = 56, this.radius = 12});
+  final List<Track> tracks;
+  final double size;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final withArt = tracks.where((t) => t.artworkUrl != null || t.mediaId != null).toList();
+    final seen = <String>{};
+    final unique = withArt.where((t) => seen.add(t.artworkUrl ?? '${t.mediaId}')).take(4).toList();
+    if (unique.length < 4) {
+      return Artwork(unique.isEmpty ? null : unique.first,
+          size: size, radius: radius, icon: AppIcons.playNext);
+    }
+    final half = size / 2;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: Wrap(children: [for (final t in unique) Artwork(t, size: half, radius: 0)]),
       ),
     );
   }
 }
 
-/// Three bouncing bars shown next to the track that is playing.
+class ArtistAvatar extends StatelessWidget {
+  const ArtistAvatar(this.artist, {super.key, this.size = 96});
+  final Artist artist;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Artwork(
+        Track(
+            id: 'a:${artist.id}',
+            title: artist.name,
+            artist: '',
+            source: TrackSource.deezer,
+            artworkUrl: artist.pictureUrl),
+        size: size,
+        radius: size / 2,
+        icon: AppIcons.artist,
+      );
+}
+
+/// Three bouncing bars shown next to the song that's playing.
 class EqualizerBars extends StatefulWidget {
   const EqualizerBars({super.key, required this.playing, this.color, this.size = 16});
   final bool playing;
@@ -134,11 +213,12 @@ class _EqualizerBarsState extends State<EqualizerBars> with SingleTickerProvider
   }
 }
 
-/// Waveform scrubber. Bars are generated deterministically from the track id
-/// so each song gets its own recognisable shape.
+/// Waveform scrubber. Bars are generated from the song id so each song has
+/// its own recognisable shape.
 class WaveformSeekBar extends StatefulWidget {
-  const WaveformSeekBar({super.key, required this.trackId});
+  const WaveformSeekBar({super.key, required this.trackId, this.accent});
   final String trackId;
+  final Color? accent;
   @override
   State<WaveformSeekBar> createState() => _WaveformSeekBarState();
 }
@@ -157,10 +237,9 @@ class _WaveformSeekBarState extends State<WaveformSeekBar> {
     final r = Random(id.hashCode);
     const n = 72;
     final raw = List.generate(n, (i) {
-      final env = 0.45 + 0.55 * sin(pi * i / n); // louder in the middle
+      final env = 0.45 + 0.55 * sin(pi * i / n);
       return (0.15 + r.nextDouble() * 0.85) * env;
     });
-    // Light smoothing so neighbouring bars relate to each other.
     return List.generate(n, (i) {
       final a = raw[max(0, i - 1)], b = raw[i], c = raw[min(n - 1, i + 1)];
       return (a + 2 * b + c) / 4;
@@ -174,7 +253,7 @@ class _WaveformSeekBarState extends State<WaveformSeekBar> {
     return StreamBuilder<Duration>(
       stream: c.player.positionStream,
       builder: (context, snap) {
-        final total = c.player.duration ?? c.current?.duration ?? Duration.zero;
+        final total = c.player.duration ?? Duration.zero;
         final pos = snap.data ?? Duration.zero;
         final frac = _drag ??
             (total.inMilliseconds == 0 ? 0.0 : pos.inMilliseconds / total.inMilliseconds)
@@ -182,9 +261,7 @@ class _WaveformSeekBarState extends State<WaveformSeekBar> {
         void update(Offset local, double width) =>
             setState(() => _drag = (local.dx / width).clamp(0.0, 1.0));
         void commit() {
-          if (_drag != null && total > Duration.zero) {
-            c.seek(total * _drag!);
-          }
+          if (_drag != null && total > Duration.zero) c.seek(total * _drag!);
           setState(() => _drag = null);
         }
 
@@ -200,9 +277,7 @@ class _WaveformSeekBarState extends State<WaveformSeekBar> {
               child: SizedBox(
                 height: 44,
                 width: double.infinity,
-                child: CustomPaint(
-                  painter: _WavePainter(_bars, frac, p.ink, p.line),
-                ),
+                child: CustomPaint(painter: _WavePainter(_bars, frac, p.ink, p.line)),
               ),
             );
           }),
@@ -229,7 +304,9 @@ class _WavePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final step = size.width / bars.length;
     final w = max(1.5, step * 0.45);
-    final paint = Paint()..strokeCap = StrokeCap.round..strokeWidth = w;
+    final paint = Paint()
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = w;
     final mid = size.height / 2;
     for (var i = 0; i < bars.length; i++) {
       final x = step * i + step / 2;
@@ -244,6 +321,24 @@ class _WavePainter extends CustomPainter {
       o.progress != progress || o.bars != bars || o.active != active;
 }
 
+class PreviewBadge extends StatelessWidget {
+  const PreviewBadge({super.key, this.small = true});
+  final bool small;
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: small ? 5 : 8, vertical: small ? 1 : 3),
+      decoration: BoxDecoration(
+        border: Border.all(color: p.sub.withValues(alpha: 0.6)),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: Text(small ? '30s' : 'Preview · 30s',
+          style: TextStyle(fontSize: small ? 9 : 11, fontWeight: FontWeight.w700, color: p.sub)),
+    );
+  }
+}
+
 /// Row used in collection lists: "01  Title / Artist • 4:21  ⋯".
 class NumberedTrackRow extends StatelessWidget {
   const NumberedTrackRow({
@@ -252,11 +347,15 @@ class NumberedTrackRow extends StatelessWidget {
     required this.track,
     required this.onTap,
     this.onRemove,
+    this.removeLabel,
+    this.trailing,
   });
   final int index;
   final Track track;
   final VoidCallback onTap;
   final VoidCallback? onRemove;
+  final String? removeLabel;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -299,14 +398,15 @@ class NumberedTrackRow extends StatelessWidget {
                   style: TextStyle(color: p.sub, fontSize: 13)),
             ]),
           ),
-          MoreButton(track: track, onRemove: onRemove),
+          ?trailing,
+          MoreButton(track: track, onRemove: onRemove, removeLabel: removeLabel),
         ]),
       ),
     );
   }
 }
 
-/// Row with artwork, used in search, home and hotlist.
+/// Row with artwork, used in search, home and the charts.
 class ArtTrackRow extends StatelessWidget {
   const ArtTrackRow({super.key, required this.track, required this.onTap, this.leading});
   final Track track;
@@ -321,7 +421,7 @@ class ArtTrackRow extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 7),
         child: Row(children: [
           if (leading != null) ...[leading!, const SizedBox(width: 12)],
           Stack(alignment: Alignment.center, children: [
@@ -330,10 +430,9 @@ class ArtTrackRow extends StatelessWidget {
               Container(
                 width: 52,
                 height: 52,
-                decoration: BoxDecoration(
-                    color: Colors.black45, borderRadius: BorderRadius.circular(12)),
-                child: Center(
-                    child: EqualizerBars(playing: c.player.playing, color: Colors.white)),
+                decoration:
+                    BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(12)),
+                child: Center(child: EqualizerBars(playing: c.player.playing, color: Colors.white)),
               ),
           ]),
           const SizedBox(width: 14),
@@ -344,10 +443,14 @@ class ArtTrackRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
               const SizedBox(height: 3),
-              Text(track.artist,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: p.sub, fontSize: 13)),
+              Row(children: [
+                Flexible(
+                  child: Text(track.artist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: p.sub, fontSize: 13)),
+                ),
+              ]),
             ]),
           ),
           MoreButton(track: track),
@@ -358,29 +461,38 @@ class ArtTrackRow extends StatelessWidget {
 }
 
 class MoreButton extends StatelessWidget {
-  const MoreButton({super.key, required this.track, this.onRemove});
+  const MoreButton({super.key, required this.track, this.onRemove, this.removeLabel});
   final Track track;
   final VoidCallback? onRemove;
+  final String? removeLabel;
   @override
   Widget build(BuildContext context) => IconButton(
-        icon: Icon(Icons.more_horiz_rounded, color: Palette.of(context).sub),
-        onPressed: () => showTrackOptions(context, track, onRemove: onRemove),
+        icon: Icon(AppIcons.more, color: Palette.of(context).sub, size: 20),
+        onPressed: () =>
+            showTrackOptions(context, track, onRemove: onRemove, removeLabel: removeLabel),
       );
 }
 
 class SectionHeader extends StatelessWidget {
-  const SectionHeader(this.title, {super.key, this.action, this.onAction});
+  const SectionHeader(this.title, {super.key, this.subtitle, this.action, this.onAction});
   final String title;
+  final String? subtitle;
   final String? action;
   final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 24, 12, 10),
-        child: Row(children: [
+        padding: const EdgeInsets.fromLTRB(20, 28, 12, 12),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
           Expanded(
-            child: Text(title,
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.3)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              if (subtitle != null)
+                Text(subtitle!,
+                    style: TextStyle(color: Palette.of(context).sub, fontSize: 13)),
+              Text(title,
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.3)),
+            ]),
           ),
           if (action != null)
             TextButton(
@@ -407,7 +519,7 @@ class EmptyState extends StatelessWidget {
               width: 72,
               height: 72,
               decoration: BoxDecoration(color: Palette.of(context).card, shape: BoxShape.circle),
-              child: Icon(icon, size: 32, color: Palette.of(context).sub),
+              child: Icon(icon, size: 30, color: Palette.of(context).sub),
             ),
             const SizedBox(height: 16),
             Text(text,
@@ -419,7 +531,7 @@ class EmptyState extends StatelessWidget {
       );
 }
 
-/// Dark filled pill button ("Play") and soft grey one ("Shuffle").
+/// Dark filled ("Play") or soft grey ("Shuffle") button from the design.
 class PillButton extends StatelessWidget {
   const PillButton({
     super.key,
@@ -444,11 +556,94 @@ class PillButton extends StatelessWidget {
           backgroundColor: filled ? p.ink : p.card,
           foregroundColor: filled ? p.onInk : p.ink,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          textStyle: const TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w600, fontSize: 15),
+          textStyle:
+              const TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w600, fontSize: 15),
         ),
         icon: Icon(icon, size: 20),
         label: Text(label),
       ),
     );
   }
+}
+
+/// Square cover with title and subtitle, for albums and playlists.
+class CoverCard extends StatelessWidget {
+  const CoverCard({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.art,
+    required this.onTap,
+    this.width = 148,
+  });
+  final String title;
+  final String subtitle;
+  final Widget art;
+  final VoidCallback onTap;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: SizedBox(
+          width: width,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            art,
+            const SizedBox(height: 10),
+            Text(title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+            const SizedBox(height: 2),
+            Text(subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: Palette.of(context).sub, fontSize: 12)),
+          ]),
+        ),
+      );
+}
+
+/// Round artist photo with name underneath.
+class ArtistBubble extends StatelessWidget {
+  const ArtistBubble({super.key, required this.artist, required this.onTap, this.size = 96});
+  final Artist artist;
+  final VoidCallback onTap;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: SizedBox(
+          width: size,
+          child: Column(children: [
+            ArtistAvatar(artist, size: size),
+            const SizedBox(height: 8),
+            Text(artist.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          ]),
+        ),
+      );
+}
+
+/// Horizontal scrolling row.
+class HRow extends StatelessWidget {
+  const HRow({super.key, required this.height, required this.children, this.spacing = 14});
+  final double height;
+  final List<Widget> children;
+  final double spacing;
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        height: height,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          itemCount: children.length,
+          separatorBuilder: (_, _) => SizedBox(width: spacing),
+          itemBuilder: (_, i) => children[i],
+        ),
+      );
 }

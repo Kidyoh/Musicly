@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../models/track.dart';
-import '../state/player_controller.dart';
-import 'collection_screen.dart';
+import '../services/device_library.dart';
+import '../state/library_controller.dart';
+import 'icons.dart';
+import 'routes.dart';
 import 'sheets.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -11,54 +12,60 @@ import 'widgets.dart';
 class LibraryScreen extends StatelessWidget {
   const LibraryScreen({super.key});
 
-  void _open(BuildContext context, String title, String owner, List<Track> Function(PlayerController) live,
-      {bool removable = false}) {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => CollectionScreen(
-        title: title,
-        owner: owner,
-        kind: 'Collection',
-        live: live,
-        removable: removable,
-      ),
-    ));
+  Future<void> _newPlaylist(BuildContext context) async {
+    final lib = context.read<LibraryController>();
+    final name = await promptText(context, 'New playlist');
+    if (name == null || !context.mounted) return;
+    openUserPlaylist(context, lib.createPlaylist(name));
   }
 
-  Future<void> _add(BuildContext context) async {
-    final n = await context.read<PlayerController>().pickLocalFiles();
+  Future<void> _scan(BuildContext context) async {
+    final lib = context.read<LibraryController>();
+    final ok = await lib.scanDevice();
+    if (!context.mounted) return;
+    toast(context, ok ? 'Found ${lib.deviceTracks.length} songs on this phone' : (lib.scanError ?? 'Scan failed'));
+  }
+
+  Future<void> _pick(BuildContext context) async {
+    final n = await context.read<LibraryController>().pickFiles();
     if (context.mounted && n > 0) toast(context, 'Added $n song${n == 1 ? '' : 's'}');
   }
 
   @override
   Widget build(BuildContext context) {
-    final c = context.watch<PlayerController>();
+    final lib = context.watch<LibraryController>();
     final p = Palette.of(context);
 
-    Widget tile(IconData icon, String title, String sub, VoidCallback onTap, {bool dark = false}) =>
-        InkWell(
+    Widget tile(Widget leading, String title, String sub, VoidCallback onTap) => InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             child: Row(children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                    color: dark ? p.ink : p.card, borderRadius: BorderRadius.circular(14)),
-                child: Icon(icon, color: dark ? p.onInk : p.ink),
-              ),
+              leading,
               const SizedBox(width: 16),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                  Text(title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
                   const SizedBox(height: 3),
                   Text(sub, style: TextStyle(color: p.sub, fontSize: 13)),
                 ]),
               ),
-              Icon(Icons.chevron_right_rounded, color: p.sub),
+              Icon(AppIcons.chevron, color: p.sub, size: 18),
             ]),
           ),
         );
+
+    Widget square(IconData icon, {bool dark = false}) => Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(color: dark ? p.ink : p.card, borderRadius: BorderRadius.circular(14)),
+          child: Icon(icon, color: dark ? p.onInk : p.ink),
+        );
+
+    final phone = DeviceLibrary.supported;
 
     return Scaffold(
       body: SafeArea(
@@ -72,54 +79,108 @@ class LibraryScreen extends StatelessWidget {
                     style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700, letterSpacing: -0.8)),
               ),
               IconButton.filled(
+                tooltip: 'New playlist',
                 style: IconButton.styleFrom(backgroundColor: p.ink, foregroundColor: p.onInk),
-                tooltip: 'Add music from device',
-                onPressed: () => _add(context),
-                icon: const Icon(Icons.add_rounded),
+                onPressed: () => _newPlaylist(context),
+                icon: const Icon(AppIcons.add, size: 20),
               ),
             ]),
           ),
-          tile(Icons.favorite_rounded, 'Liked songs', '${c.favorites.length} songs',
-              () => _open(context, 'Liked songs', 'You', (c) => c.favorites),
-              dark: true),
-          tile(Icons.smartphone_rounded, 'On this device', '${c.localTracks.length} songs',
-              () => _open(context, 'On this device', 'Your files', (c) => c.localTracks,
-                  removable: true)),
-          tile(Icons.history_rounded, 'Recently played', '${c.recent.length} songs',
-              () => _open(context, 'Recently played', 'You', (c) => c.recent)),
-          if (c.localTracks.isEmpty)
+          tile(square(AppIcons.heartOn, dark: true), 'Liked songs', '${lib.favorites.length} songs',
+              () => openLive(context, 'Liked songs', 'You', (l) => l.favorites)),
+          if (lib.localTracks.isNotEmpty)
+            tile(square(AppIcons.phone), 'On this phone', '${lib.localTracks.length} songs • full length',
+                () => openLive(context, 'On this phone', 'Your music', (l) => l.localTracks,
+                    removableFiles: true)),
+          tile(square(AppIcons.history), 'Recently played', '${lib.recent.length} songs',
+              () => openLive(context, 'Recently played', 'You', (l) => l.recent)),
+
+          // Playlists
+          SectionHeader('Your playlists', action: 'New', onAction: () => _newPlaylist(context)),
+          if (lib.playlists.isEmpty)
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Text('Make your first playlist with the + button, or use ⋯ on any song.',
+                  style: TextStyle(color: p.sub, height: 1.5)),
+            )
+          else
+            for (final pl in lib.playlists)
+              tile(Mosaic(pl.tracks, size: 56), pl.name, '${pl.tracks.length} songs',
+                  () => openUserPlaylist(context, pl)),
+
+          // Following
+          if (lib.following.isNotEmpty) ...[
+            const SectionHeader('Artists you follow'),
+            HRow(height: 130, children: [
+              for (final a in lib.following)
+                ArtistBubble(artist: a, onTap: () => openArtist(context, a.id, a.name)),
+            ]),
+          ],
+
+          // Phone music
+          if (phone && lib.deviceTracks.isNotEmpty) ...[
+            SectionHeader('Albums on this phone',
+                action: lib.scanning ? null : 'Rescan', onAction: () => _scan(context)),
+            HRow(height: 206, children: [
+              for (final (album, artist, tracks) in lib.deviceAlbums)
+                CoverCard(
+                  title: album,
+                  subtitle: artist,
+                  art: Artwork(tracks.first, size: 148, radius: 16),
+                  onTap: () => openLive(context, album, artist, (l) {
+                    for (final a in l.deviceAlbums) {
+                      if (a.$1 == album && a.$2 == artist) return a.$3;
+                    }
+                    return const [];
+                  }, kind: 'Album', cover: tracks.first),
+                ),
+            ]),
+          ],
+          if (lib.deviceTracks.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
               child: Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(20)),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Bring your own music',
-                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
-                  const SizedBox(height: 6),
+                  Row(children: [
+                    const Icon(AppIcons.headphones),
+                    const SizedBox(width: 10),
+                    Text(phone ? 'Play full songs from your phone' : 'Bring your own music',
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
+                  ]),
+                  const SizedBox(height: 8),
                   Text(
-                    'Add MP3, M4A, FLAC or WAV files from your device. Name files like '
-                    '"Artist - Title.mp3" and Musicly will find synced lyrics for them too.',
+                    phone
+                        ? 'Musicly can find the songs already on this phone and play them in full, '
+                            'with album art and synced lyrics.'
+                        : 'Add MP3, M4A, FLAC or WAV files. Name them like "Artist - Title.mp3" '
+                            'and Musicly will find synced lyrics too.',
                     style: TextStyle(color: p.sub, height: 1.5),
                   ),
                   const SizedBox(height: 14),
-                  PillButton(
-                      icon: Icons.folder_open_rounded,
-                      label: 'Add music',
-                      onPressed: () => _add(context)),
+                  Row(children: [
+                    if (phone)
+                      Expanded(
+                        child: PillButton(
+                          icon: AppIcons.phone,
+                          label: lib.scanning ? 'Scanning…' : 'Find my music',
+                          onPressed: lib.scanning ? null : () => _scan(context),
+                        ),
+                      ),
+                    if (phone) const SizedBox(width: 12),
+                    Expanded(
+                      child: PillButton(
+                        icon: AppIcons.folder,
+                        label: 'Pick files',
+                        filled: !phone,
+                        onPressed: () => _pick(context),
+                      ),
+                    ),
+                  ]),
                 ]),
               ),
-            )
-          else ...[
-            const SectionHeader('Your songs'),
-            for (var i = 0; i < c.localTracks.length; i++)
-              NumberedTrackRow(
-                index: i,
-                track: c.localTracks[i],
-                onTap: () => c.playQueue(c.localTracks, i),
-                onRemove: () => c.removeLocal(c.localTracks[i]),
-              ),
-          ],
+            ),
         ]),
       ),
     );

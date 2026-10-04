@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../state/library_controller.dart';
 import '../state/player_controller.dart';
 import 'home_screen.dart';
+import 'icons.dart';
+import 'nav.dart';
 import 'hotlist_screen.dart';
 import 'library_screen.dart';
 import 'now_playing.dart';
@@ -24,11 +27,17 @@ class _ShellState extends State<Shell> {
   final _navKeys = List.generate(4, (_) => GlobalKey<NavigatorState>());
 
   static const _items = [
-    (Icons.home_outlined, Icons.home_rounded, 'Home'),
-    (Icons.search_rounded, Icons.search_rounded, 'Search'),
-    (Icons.library_music_outlined, Icons.library_music_rounded, 'Library'),
-    (Icons.local_fire_department_outlined, Icons.local_fire_department_rounded, 'Hotlist'),
+    (AppIcons.home, AppIcons.homeOn, 'Home'),
+    (AppIcons.search, AppIcons.searchOn, 'Search'),
+    (AppIcons.library, AppIcons.libraryOn, 'Library'),
+    (AppIcons.hot, AppIcons.hotOn, 'Hotlist'),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    shellNavigator.value = () => _navKeys[_tab].currentState;
+  }
 
   Widget _root(int i) => switch (i) {
         0 => HomeScreen(onOpenTab: _select),
@@ -112,6 +121,7 @@ class _ShellState extends State<Shell> {
                               child: Icon(
                                 i == _tab ? _items[i].$2 : _items[i].$1,
                                 key: ValueKey(i == _tab),
+                                size: 24,
                                 color: i == _tab ? p.ink : p.sub,
                               ),
                             ),
@@ -142,6 +152,7 @@ class _MiniPlayer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.watch<PlayerController>();
+    final lib = context.watch<LibraryController>();
     final p = Palette.of(context);
     final t = c.current;
     return AnimatedSize(
@@ -211,10 +222,10 @@ class _MiniPlayer extends StatelessWidget {
                         ),
                       ),
                       IconButton(
-                        onPressed: () => c.toggleFavorite(t),
+                        onPressed: () => lib.toggleFavorite(t),
                         icon: Icon(
-                          c.isFavorite(t) ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                          color: c.isFavorite(t) ? const Color(0xFFE5484D) : p.onDock,
+                          lib.isFavorite(t) ? AppIcons.heartOn : AppIcons.heart,
+                          color: lib.isFavorite(t) ? const Color(0xFFE5484D) : p.onDock,
                         ),
                       ),
                       const SizedBox(width: 4),
@@ -226,7 +237,8 @@ class _MiniPlayer extends StatelessWidget {
                           decoration: BoxDecoration(
                               color: Colors.white, borderRadius: BorderRadius.circular(12)),
                           child: Icon(
-                            c.player.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                            c.player.playing ? AppIcons.pause : AppIcons.play,
+                            size: 20,
                             color: const Color(0xFF1C1D22),
                           ),
                         ),

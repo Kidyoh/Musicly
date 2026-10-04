@@ -5,10 +5,12 @@ import 'package:provider/provider.dart';
 
 import '../models/collection.dart';
 import '../models/track.dart';
-import '../services/audius_api.dart';
+import '../state/library_controller.dart';
 import '../state/player_controller.dart';
 import 'collection_screen.dart';
-import 'home_screen.dart';
+import 'icons.dart';
+import 'nav.dart';
+import 'routes.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -25,6 +27,8 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _loading = false;
   String? _error;
   List<Track> _songs = [];
+  List<Artist> _artists = [];
+  List<Collection> _albums = [];
   List<Collection> _playlists = [];
 
   @override
@@ -36,30 +40,32 @@ class _SearchScreenState extends State<SearchScreen> {
 
   void _onChanged(String v) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 450), () => _run(v));
+    _debounce = Timer(const Duration(milliseconds: 400), () => _run(v));
     setState(() => _q = v);
   }
 
   Future<void> _run(String q) async {
     q = q.trim();
-    if (q.isEmpty) {
-      setState(() {
-        _songs = [];
-        _playlists = [];
-      });
-      return;
-    }
-    final api = context.read<PlayerController>().api;
+    if (q.isEmpty) return;
+    final api = context.read<LibraryController>().api;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final r = await Future.wait([api.search(q), api.searchPlaylists(q)]);
+      // Each section loads on its own; only a failed song search counts as an error.
+      final r = await Future.wait<List<Object>>([
+        api.search(q, limit: 25),
+        api.searchArtists(q, limit: 8).catchError((_) => <Artist>[]),
+        api.searchAlbums(q, limit: 10).catchError((_) => <Collection>[]),
+        api.searchPlaylists(q, limit: 8).catchError((_) => <Collection>[]),
+      ]);
       if (!mounted || q != _q.trim()) return;
       setState(() {
         _songs = r[0] as List<Track>;
-        _playlists = r[1] as List<Collection>;
+        _artists = r[1] as List<Artist>;
+        _albums = r[2] as List<Collection>;
+        _playlists = r[3] as List<Collection>;
       });
     } catch (_) {
       if (mounted) setState(() => _error = 'Search failed. Check your connection.');
@@ -67,28 +73,33 @@ class _SearchScreenState extends State<SearchScreen> {
     if (mounted) setState(() => _loading = false);
   }
 
-  void _openGenre(String g) {
-    final c = context.read<PlayerController>();
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => CollectionScreen(
-        title: g,
-        owner: 'Top this week',
+  void _openGenre(Genre g) {
+    final api = context.read<LibraryController>().api;
+    openPage(
+      context,
+      CollectionScreen(
+        title: g.name,
+        owner: 'Top songs right now',
         kind: 'Genre',
-        load: () => c.api.trending(genre: g, limit: 40),
+        cover: Track(id: 'g:${g.id}', title: g.name, artist: '', source: TrackSource.deezer, artworkUrl: g.pictureUrl),
+        load: () => api.chartTracks(genreId: g.id, limit: 50),
       ),
-    ));
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final c = context.watch<PlayerController>();
+    final lib = context.watch<LibraryController>();
+    final c = context.read<PlayerController>();
     final p = Palette.of(context);
     final q = _q.trim().toLowerCase();
     final local = q.isEmpty
         ? <Track>[]
-        : c.localTracks
+        : lib.localTracks
             .where((t) => t.title.toLowerCase().contains(q) || t.artist.toLowerCase().contains(q))
+            .take(5)
             .toList();
+    final nothing = _songs.isEmpty && local.isEmpty && _artists.isEmpty && _albums.isEmpty;
 
     return Scaffold(
       body: SafeArea(
@@ -110,12 +121,12 @@ class _SearchScreenState extends State<SearchScreen> {
               textInputAction: TextInputAction.search,
               onSubmitted: _run,
               decoration: InputDecoration(
-                hintText: 'Songs, artists, playlists',
-                prefixIcon: const Icon(Icons.search_rounded),
+                hintText: 'Artists, songs, albums',
+                prefixIcon: const Icon(AppIcons.search, size: 20),
                 suffixIcon: _q.isEmpty
                     ? null
                     : IconButton(
-                        icon: const Icon(Icons.close_rounded),
+                        icon: const Icon(AppIcons.close, size: 18),
                         onPressed: () {
                           _ctl.clear();
                           _onChanged('');
@@ -126,23 +137,43 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
           Expanded(
             child: q.isEmpty
-                ? _genres(p)
-                : _loading && _songs.isEmpty
+                ? _genres(lib, p)
+                : _loading && nothing
                     ? const Center(child: CircularProgressIndicator())
-                    : _error != null && _songs.isEmpty && local.isEmpty
-                        ? EmptyState(icon: Icons.cloud_off_rounded, text: _error!)
-                        : _songs.isEmpty && local.isEmpty && _playlists.isEmpty
-                            ? EmptyState(icon: Icons.search_off_rounded, text: 'No results for "$_q"')
+                    : _error != null && nothing
+                        ? EmptyState(icon: AppIcons.offline, text: _error!)
+                        : nothing
+                            ? EmptyState(icon: AppIcons.search, text: 'No results for "$_q"')
                             : ListView(padding: const EdgeInsets.only(bottom: 24), children: [
-                                if (local.isNotEmpty) ...[
-                                  const SectionHeader('On this device'),
-                                  for (var i = 0; i < local.length; i++)
-                                    ArtTrackRow(track: local[i], onTap: () => c.playQueue(local, i)),
-                                ],
+                                if (_artists.isNotEmpty) _topArtist(_artists.first, p),
                                 if (_songs.isNotEmpty) ...[
                                   const SectionHeader('Songs'),
-                                  for (var i = 0; i < _songs.length; i++)
+                                  for (var i = 0; i < _songs.length.clamp(0, 8); i++)
                                     ArtTrackRow(track: _songs[i], onTap: () => c.playQueue(_songs, i)),
+                                ],
+                                if (_artists.length > 1) ...[
+                                  const SectionHeader('Artists'),
+                                  HRow(height: 130, children: [
+                                    for (final a in _artists.skip(1))
+                                      ArtistBubble(artist: a, onTap: () => openArtist(context, a.id, a.name)),
+                                  ]),
+                                ],
+                                if (_albums.isNotEmpty) ...[
+                                  const SectionHeader('Albums'),
+                                  HRow(height: 206, children: [
+                                    for (final a in _albums)
+                                      CoverCard(
+                                        title: a.title,
+                                        subtitle: a.owner,
+                                        art: Artwork(a.coverTrack, size: 148, radius: 16),
+                                        onTap: () => openCollection(context, a),
+                                      ),
+                                  ]),
+                                ],
+                                if (local.isNotEmpty) ...[
+                                  const SectionHeader('On this phone'),
+                                  for (var i = 0; i < local.length; i++)
+                                    ArtTrackRow(track: local[i], onTap: () => c.playQueue(local, i)),
                                 ],
                                 if (_playlists.isNotEmpty) ...[
                                   const SectionHeader('Playlists'),
@@ -156,7 +187,7 @@ class _SearchScreenState extends State<SearchScreen> {
                                           style: const TextStyle(fontWeight: FontWeight.w600)),
                                       subtitle: Text('${col.owner} • ${col.trackCount ?? 0} songs',
                                           style: TextStyle(color: p.sub)),
-                                      trailing: Icon(Icons.chevron_right_rounded, color: p.sub),
+                                      trailing: Icon(AppIcons.chevron, color: p.sub, size: 18),
                                       onTap: () => openCollection(context, col),
                                     ),
                                 ],
@@ -167,50 +198,81 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _genres(Palette p) {
-    const shades = [0.95, 0.85, 0.75, 0.65];
-    return ListView(padding: const EdgeInsets.fromLTRB(20, 0, 20, 24), children: [
-      const SectionHeaderInline('Browse genres'),
-      GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 1.9),
-        itemCount: AudiusApi.genres.length,
-        itemBuilder: (_, i) {
-          final g = AudiusApi.genres[i];
-          return Material(
-            color: p.ink.withValues(alpha: shades[i % shades.length]),
-            borderRadius: BorderRadius.circular(16),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: () => _openGenre(g),
-              child: Stack(children: [
-                Positioned(
-                  right: -10,
-                  bottom: -14,
-                  child: Icon(Icons.graphic_eq_rounded, size: 70, color: p.onInk.withValues(alpha: 0.12)),
+  Widget _topArtist(Artist a, Palette p) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+        child: Material(
+          color: p.card,
+          borderRadius: BorderRadius.circular(20),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: () => openArtist(context, a.id, a.name),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(children: [
+                ArtistAvatar(a, size: 72),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Top result', style: TextStyle(color: p.sub, fontSize: 12)),
+                    Text(a.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.4)),
+                    if (a.fans != null)
+                      Text('Artist • ${compact(a.fans!)} fans', style: TextStyle(color: p.sub, fontSize: 13)),
+                  ]),
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Text(g,
-                      style: TextStyle(color: p.onInk, fontWeight: FontWeight.w700, fontSize: 16)),
-                ),
+                Icon(AppIcons.chevron, color: p.sub),
               ]),
             ),
-          );
-        },
-      ),
-    ]);
-  }
-}
-
-class SectionHeaderInline extends StatelessWidget {
-  const SectionHeaderInline(this.text, {super.key});
-  final String text;
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(0, 24, 0, 12),
-        child: Text(text, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+          ),
+        ),
       );
+
+  Widget _genres(LibraryController lib, Palette p) {
+    if (lib.genres.isEmpty) {
+      return const EmptyState(icon: AppIcons.search, text: 'Find any artist, song or album.');
+    }
+    return GridView.builder(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 1.7),
+      itemCount: lib.genres.length,
+      itemBuilder: (_, i) {
+        final g = lib.genres[i];
+        return Material(
+          color: p.ink,
+          borderRadius: BorderRadius.circular(18),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => _openGenre(g),
+            child: Stack(fit: StackFit.expand, children: [
+              if (g.pictureUrl != null)
+                Image.network(g.pictureUrl!,
+                    fit: BoxFit.cover,
+                    webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
+                    errorBuilder: (_, _, _) => const SizedBox()),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomLeft,
+                    end: Alignment.topRight,
+                    colors: [Color(0xE61C1D22), Color(0x331C1D22)],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(14),
+                child: Align(
+                  alignment: Alignment.bottomLeft,
+                  child: Text(g.name,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16)),
+                ),
+              ),
+            ]),
+          ),
+        );
+      },
+    );
+  }
 }

@@ -20,6 +20,10 @@ class LyricsController extends ChangeNotifier {
   final Map<String, Lyrics?> _cache = {};
 
   String? _trackId;
+
+  /// Previews are a 30s clip from somewhere in the song, so line timings
+  /// can't line up. Full songs on the device sync properly.
+  bool get canSync => !(_player.current?.isPreview ?? false);
   LyricsStatus status = LyricsStatus.idle;
   Lyrics? lyrics;
   Duration offset = Duration.zero;

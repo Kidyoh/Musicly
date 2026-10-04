@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:provider/provider.dart';
 
+import 'services/deezer_api.dart';
+import 'state/library_controller.dart';
 import 'state/lyrics_controller.dart';
 import 'state/player_controller.dart';
 import 'ui/shell.dart';
@@ -15,11 +17,15 @@ Future<void> main() async {
       androidNotificationChannelId: 'com.musicly.audio',
       androidNotificationChannelName: 'Musicly playback',
       androidNotificationOngoing: true,
+      androidNotificationIcon: 'drawable/ic_stat_musicly',
     );
   }
-  final player = PlayerController();
+  final api = DeezerApi();
+  final library = LibraryController(api);
+  final player = PlayerController(api)..onTrackStarted = library.recordPlay;
   runApp(MultiProvider(
     providers: [
+      ChangeNotifierProvider.value(value: library),
       ChangeNotifierProvider.value(value: player),
       ChangeNotifierProvider(create: (_) => LyricsController(player)),
     ],
@@ -32,7 +38,7 @@ class MusiclyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mode = context.select<PlayerController, ThemeMode>((c) => c.themeMode);
+    final mode = context.select<LibraryController, ThemeMode>((c) => c.themeMode);
     return MaterialApp(
       title: 'Musicly',
       debugShowCheckedModeBanner: false,

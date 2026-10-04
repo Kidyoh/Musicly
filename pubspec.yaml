@@ -40,6 +40,8 @@ dependencies:
   file_picker: ^13.1.0
   http: ^1.6.0
   shared_preferences: ^2.5.5
+  web: ^1.1.1
+  url_launcher: ^6.3.3
 
 dev_dependencies:
   flutter_test:
@@ -51,6 +53,8 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.4.8
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -103,3 +107,38 @@ flutter:
           weight: 600
         - asset: assets/fonts/Inter-Bold.ttf
           weight: 700
+    - family: PhosphorRegular
+      fonts:
+        - asset: assets/fonts/Phosphor-Regular.ttf
+    - family: PhosphorFill
+      fonts:
+        - asset: assets/fonts/Phosphor-Fill.ttf
+    - family: PhosphorBold
+      fonts:
+        - asset: assets/fonts/Phosphor-Bold.ttf
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  image_path: assets/icon/icon.png
+  adaptive_icon_background: "#1C1D22"
+  adaptive_icon_foreground: assets/icon/foreground.png
+  adaptive_icon_monochrome: assets/icon/foreground.png
+  web:
+    generate: true
+    image_path: assets/icon/icon.png
+    background_color: "#1C1D22"
+    theme_color: "#1C1D22"
+
+flutter_native_splash:
+  color: "#FFFFFF"
+  image: assets/icon/splash_light.png
+  color_dark: "#0E0F12"
+  image_dark: assets/icon/splash_dark.png
+  android_12:
+    color: "#FFFFFF"
+    image: assets/icon/splash12_light.png
+    color_dark: "#0E0F12"
+    image_dark: assets/icon/splash12_dark.png
+  web: true

@@ -5,13 +5,13 @@ import 'package:provider/provider.dart';
 
 import '../state/lyrics_controller.dart';
 import '../state/player_controller.dart';
+import 'icons.dart';
 import 'sheets.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
 /// Karaoke-style synced lyrics. The current line is highlighted and kept in
-/// view; tapping any line seeks there. Scrolling by hand pauses the follow
-/// for a few seconds.
+/// view; tapping a line seeks there. Scrolling by hand pauses the follow.
 class LyricsView extends StatefulWidget {
   const LyricsView({super.key});
   @override
@@ -19,7 +19,6 @@ class LyricsView extends StatefulWidget {
 }
 
 class _LyricsViewState extends State<LyricsView> {
-  final _scroll = ScrollController();
   final Map<int, GlobalKey> _keys = {};
   StreamSubscription<Duration>? _sub;
   int _line = -1;
@@ -28,32 +27,28 @@ class _LyricsViewState extends State<LyricsView> {
   @override
   void initState() {
     super.initState();
-    final c = context.read<PlayerController>();
-    _sub = c.player.positionStream.listen(_onPosition);
+    _sub = context.read<PlayerController>().player.positionStream.listen(_onPosition);
   }
 
   void _onPosition(Duration pos) {
     if (!mounted) return;
-    final i = context.read<LyricsController>().lineAt(pos);
+    final l = context.read<LyricsController>();
+    if (!l.canSync) return;
+    final i = l.lineAt(pos);
     if (i == _line) return;
     setState(() => _line = i);
     if (DateTime.now().difference(_userScrolledAt) < const Duration(seconds: 4)) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _follow());
-  }
-
-  void _follow() {
-    final ctx = _keys[_line < 0 ? 0 : _line]?.currentContext;
-    if (ctx == null) return;
-    Scrollable.ensureVisible(ctx,
-        alignment: 0.35,
-        duration: const Duration(milliseconds: 450),
-        curve: Curves.easeOutCubic);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _keys[_line < 0 ? 0 : _line]?.currentContext;
+      if (ctx == null) return;
+      Scrollable.ensureVisible(ctx,
+          alignment: 0.35, duration: const Duration(milliseconds: 450), curve: Curves.easeOutCubic);
+    });
   }
 
   @override
   void dispose() {
     _sub?.cancel();
-    _scroll.dispose();
     super.dispose();
   }
 
@@ -69,17 +64,17 @@ class _LyricsViewState extends State<LyricsView> {
         return const Center(child: CircularProgressIndicator());
       case LyricsStatus.error:
         return EmptyState(
-          icon: Icons.cloud_off_rounded,
+          icon: AppIcons.offline,
           text: 'Could not load lyrics.',
           action: OutlinedButton(onPressed: l.retry, child: const Text('Try again')),
         );
       case LyricsStatus.notFound:
         return EmptyState(
-          icon: Icons.lyrics_outlined,
+          icon: AppIcons.lyrics,
           text: 'No lyrics found for this song.',
           action: FilledButton.icon(
             onPressed: () => showLyricsSearch(context),
-            icon: const Icon(Icons.search_rounded),
+            icon: const Icon(AppIcons.search, size: 18),
             label: const Text('Search lyrics'),
           ),
         );
@@ -89,23 +84,22 @@ class _LyricsViewState extends State<LyricsView> {
 
     final lyr = l.lyrics!;
     if (lyr.instrumental) {
-      return const EmptyState(icon: Icons.piano_rounded, text: 'Instrumental — enjoy the music.');
+      return const EmptyState(icon: AppIcons.headphones, text: 'Instrumental. Enjoy the music.');
     }
+    final live = lyr.isSynced && l.canSync;
+
+    Widget pill(String text, bool dark) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(color: dark ? p.ink : p.card, borderRadius: BorderRadius.circular(20)),
+          child: Text(text,
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: dark ? p.onInk : p.sub)),
+        );
 
     final toolbar = Row(children: [
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-            color: lyr.isSynced ? p.ink : p.card, borderRadius: BorderRadius.circular(20)),
-        child: Text(lyr.isSynced ? 'Synced' : 'Not synced',
-            style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: lyr.isSynced ? p.onInk : p.sub)),
-      ),
+      pill(live ? 'Synced' : (l.canSync ? 'Not synced' : 'Preview: sync on full songs'), live),
       const Spacer(),
-      if (lyr.isSynced) ...[
-        _Nudge(icon: Icons.remove_rounded, onTap: () => l.nudge(const Duration(milliseconds: -500))),
+      if (live) ...[
+        _Nudge(icon: AppIcons.minus, onTap: () => l.nudge(const Duration(milliseconds: -500))),
         SizedBox(
           width: 52,
           child: Text(
@@ -114,28 +108,19 @@ class _LyricsViewState extends State<LyricsView> {
             style: TextStyle(fontSize: 12, color: p.sub, fontWeight: FontWeight.w600),
           ),
         ),
-        _Nudge(icon: Icons.add_rounded, onTap: () => l.nudge(const Duration(milliseconds: 500))),
+        _Nudge(icon: AppIcons.plus, onTap: () => l.nudge(const Duration(milliseconds: 500))),
         const SizedBox(width: 4),
       ],
       IconButton(
         tooltip: 'Search lyrics',
-        icon: const Icon(Icons.manage_search_rounded),
+        icon: const Icon(AppIcons.findLyrics),
         onPressed: () => showLyricsSearch(context),
       ),
     ]);
 
-    if (!lyr.isSynced) {
-      return Column(children: [
-        toolbar,
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Text(lyr.plain ?? '',
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600, height: 1.6)),
-          ),
-        ),
-      ]);
-    }
+    final lines = lyr.isSynced
+        ? lyr.synced.map((x) => x.text).toList()
+        : (lyr.plain ?? '').split('\n');
 
     return Column(children: [
       toolbar,
@@ -154,41 +139,44 @@ class _LyricsViewState extends State<LyricsView> {
             ).createShader(r),
             blendMode: BlendMode.dstIn,
             child: ListView.builder(
-              controller: _scroll,
               padding: const EdgeInsets.symmetric(vertical: 60),
-              itemCount: lyr.synced.length,
+              itemCount: lines.length,
               itemBuilder: (_, i) {
-                final line = lyr.synced[i];
-                final active = i == _line;
-                final passed = i < _line;
+                final active = live && i == _line;
+                final passed = live && i < _line;
+                final text = lines[i].trim();
+                final child = Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  child: AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOut,
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: active ? 26 : 22,
+                      height: 1.3,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.4,
+                      color: !live
+                          ? p.ink.withValues(alpha: 0.85)
+                          : active
+                              ? p.ink
+                              : passed
+                                  ? p.sub.withValues(alpha: 0.5)
+                                  : p.sub.withValues(alpha: 0.8),
+                    ),
+                    child: Text(text.isEmpty ? '♪' : text),
+                  ),
+                );
+                if (!live) return child;
                 return InkWell(
                   key: _keys.putIfAbsent(i, GlobalKey.new),
                   borderRadius: BorderRadius.circular(12),
                   onTap: () {
                     _userScrolledAt = DateTime(0);
-                    final target = line.time - l.offset;
+                    final target = lyr.synced[i].time - l.offset;
                     c.seek(target.isNegative ? Duration.zero : target);
                   },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                    child: AnimatedDefaultTextStyle(
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeOut,
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: active ? 26 : 22,
-                        height: 1.3,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.4,
-                        color: active
-                            ? p.ink
-                            : passed
-                                ? p.sub.withValues(alpha: 0.55)
-                                : p.sub.withValues(alpha: 0.8),
-                      ),
-                      child: Text(line.text.isEmpty ? '♪' : line.text),
-                    ),
-                  ),
+                  child: child,
                 );
               },
             ),
@@ -211,7 +199,7 @@ class _Nudge extends StatelessWidget {
           width: 28,
           height: 28,
           decoration: BoxDecoration(color: Palette.of(context).card, shape: BoxShape.circle),
-          child: Icon(icon, size: 16),
+          child: Icon(icon, size: 14),
         ),
       );
 }
