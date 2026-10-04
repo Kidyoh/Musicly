@@ -4,10 +4,12 @@ import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/collection.dart';
 import '../models/track.dart';
 import '../services/audius_api.dart';
 
@@ -33,21 +35,27 @@ class PlayerController extends ChangeNotifier {
   PlayerController() {
     _wire();
     _restore();
-    loadTrending();
+    loadHome();
   }
 
   final AudioPlayer player = AudioPlayer();
-  final AudiusApi _api = AudiusApi();
+  final AudiusApi api = AudiusApi();
 
-  // Library state
+  ThemeMode themeMode = ThemeMode.light;
+
+  // Library
   final List<Track> localTracks = [];
   final List<Track> favorites = [];
   final List<Track> recent = [];
-  List<Track> onlineTracks = [];
-  bool onlineLoading = false;
-  String? onlineError;
 
-  // Playback state
+  // Home feed
+  List<Track> trending = [];
+  List<Collection> featured = [];
+  bool homeLoading = false;
+  String? homeError;
+  String? playError;
+
+  // Playback
   List<Track> queue = [];
   int currentIndex = 0;
   bool shuffle = false;
@@ -57,7 +65,9 @@ class PlayerController extends ChangeNotifier {
   // Sleep timer
   Timer? _sleepTimer;
   DateTime? _sleepEndsAt;
+  bool sleepAtTrackEnd = false;
   Duration? get sleepRemaining => _sleepEndsAt?.difference(DateTime.now());
+  bool get sleepActive => _sleepEndsAt != null || sleepAtTrackEnd;
 
   Track? get current =>
       queue.isEmpty || currentIndex >= queue.length ? null : queue[currentIndex];
@@ -66,13 +76,22 @@ class PlayerController extends ChangeNotifier {
 
   void _wire() {
     player.currentIndexStream.listen((i) {
-      if (i == null || i == currentIndex && current != null) return;
+      if (i == null) return;
+      final changed = i != currentIndex;
+      if (changed && sleepAtTrackEnd) {
+        sleepAtTrackEnd = false;
+        player.pause();
+      }
       currentIndex = i;
-      final t = current;
-      if (t != null) _addRecent(t);
+      if (changed && current != null) _addRecent(current!);
       notifyListeners();
     });
-    player.playerStateStream.listen((_) => notifyListeners());
+    player.playerStateStream.listen((s) {
+      if (s.processingState == ProcessingState.completed && sleepAtTrackEnd) {
+        sleepAtTrackEnd = false;
+      }
+      notifyListeners();
+    });
   }
 
   // ---- Playback -----------------------------------------------------------
@@ -94,9 +113,11 @@ class PlayerController extends ChangeNotifier {
     return AudioSource.uri(Uri.parse(t.uri!), tag: tag);
   }
 
-  Future<void> playQueue(List<Track> tracks, int index) async {
+  Future<void> playQueue(List<Track> tracks, int index, {bool shuffled = false}) async {
+    if (tracks.isEmpty) return;
     queue = List.of(tracks);
     currentIndex = index;
+    playError = null;
     _addRecent(queue[index]);
     notifyListeners();
     try {
@@ -104,11 +125,18 @@ class PlayerController extends ChangeNotifier {
         queue.map(_sourceFor).toList(),
         initialIndex: index,
       );
+      if (shuffled != shuffle) await toggleShuffle();
+      if (shuffled) await player.seek(Duration.zero, index: player.effectiveIndices.first);
       await player.play();
     } catch (e) {
-      onlineError = 'Could not play this track: $e';
+      playError = 'Could not play this track';
       notifyListeners();
     }
+  }
+
+  Future<void> playShuffled(List<Track> tracks) async {
+    if (tracks.isEmpty) return;
+    await playQueue(tracks, 0, shuffled: true);
   }
 
   Future<void> togglePlay() async =>
@@ -125,6 +153,8 @@ class PlayerController extends ChangeNotifier {
   }
 
   Future<void> seek(Duration d) => player.seek(d);
+
+  Future<void> jumpTo(int index) => player.seek(Duration.zero, index: index);
 
   Future<void> toggleShuffle() async {
     shuffle = !shuffle;
@@ -149,10 +179,11 @@ class PlayerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> addToQueue(Track t) async {
-    if (queue.isEmpty) return playQueue([t], 0);
-    queue.add(t);
-    await player.addAudioSource(_sourceFor(t));
+  Future<void> addToQueue(List<Track> tracks) async {
+    if (tracks.isEmpty) return;
+    if (queue.isEmpty) return playQueue(tracks, 0);
+    queue.addAll(tracks);
+    await player.addAudioSources(tracks.map(_sourceFor).toList());
     notifyListeners();
   }
 
@@ -166,45 +197,88 @@ class PlayerController extends ChangeNotifier {
   Future<void> removeFromQueue(int i) async {
     if (i == currentIndex) return;
     queue.removeAt(i);
-    await player.removeAudioSourceAt(i);
     if (i < currentIndex) currentIndex--;
     notifyListeners();
+    await player.removeAudioSourceAt(i);
+  }
+
+  Future<void> moveInQueue(int from, int to) async {
+    if (from == to) return;
+    final t = queue.removeAt(from);
+    queue.insert(to, t);
+    if (from == currentIndex) {
+      currentIndex = to;
+    } else if (from < currentIndex && to >= currentIndex) {
+      currentIndex--;
+    } else if (from > currentIndex && to <= currentIndex) {
+      currentIndex++;
+    }
+    notifyListeners();
+    await player.moveAudioSource(from, to);
   }
 
   // ---- Sleep timer --------------------------------------------------------
 
-  void setSleepTimer(Duration? d) {
+  void setSleepTimer(Duration? d, {bool atTrackEnd = false}) {
     _sleepTimer?.cancel();
     _sleepEndsAt = null;
+    sleepAtTrackEnd = atTrackEnd;
     if (d != null) {
       _sleepEndsAt = DateTime.now().add(d);
-      _sleepTimer = Timer(d, () {
-        player.pause();
+      _sleepTimer = Timer(d, () async {
         _sleepEndsAt = null;
         notifyListeners();
+        // Fade out gently instead of cutting the song off.
+        for (var v = 1.0; v > 0; v -= 0.1) {
+          await player.setVolume(v);
+          await Future.delayed(const Duration(milliseconds: 300));
+        }
+        await player.pause();
+        await player.setVolume(1);
       });
     }
     notifyListeners();
   }
 
+  // ---- Feeds --------------------------------------------------------------
+
+  Future<void> loadHome() async {
+    homeLoading = true;
+    homeError = null;
+    notifyListeners();
+    try {
+      final r = await Future.wait([api.trending(limit: 20), api.trendingPlaylists()]);
+      trending = r[0] as List<Track>;
+      featured = r[1] as List<Collection>;
+    } catch (_) {
+      homeError = 'Could not load online music. Check your connection.';
+    }
+    homeLoading = false;
+    notifyListeners();
+  }
+
   // ---- Library ------------------------------------------------------------
 
-  Future<void> pickLocalFiles() async {
+  Future<int> pickLocalFiles() async {
     final files = await FilePicker.pickFiles(type: FileType.audio);
+    var added = 0;
     for (final f in files) {
       final id = 'local:${kIsWeb ? '${f.name}:${f.lengthSync()}' : f.path}';
       if (localTracks.any((t) => t.id == id)) continue;
+      final (artist, title) = _splitName(f.name);
       localTracks.add(Track(
         id: id,
-        title: _cleanName(f.name),
-        artist: 'On this device',
+        title: title,
+        artist: artist,
         source: TrackSource.local,
         uri: kIsWeb ? null : f.path,
         bytes: kIsWeb ? await f.readAsBytes() : null,
       ));
+      added++;
     }
     await _save();
     notifyListeners();
+    return added;
   }
 
   void removeLocal(Track t) {
@@ -213,36 +287,15 @@ class PlayerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  String _cleanName(String n) {
+  /// "Artist - Title.mp3" → (Artist, Title); otherwise (Unknown artist, name).
+  (String, String) _splitName(String n) {
     final dot = n.lastIndexOf('.');
-    return (dot > 0 ? n.substring(0, dot) : n).replaceAll('_', ' ');
-  }
-
-  Future<void> loadTrending() async {
-    onlineLoading = true;
-    onlineError = null;
-    notifyListeners();
-    try {
-      onlineTracks = await _api.trending();
-    } catch (e) {
-      onlineError = 'Could not load online music. Check your connection.';
+    final base = (dot > 0 ? n.substring(0, dot) : n).replaceAll('_', ' ').trim();
+    final dash = base.indexOf(' - ');
+    if (dash > 0) {
+      return (base.substring(0, dash).trim(), base.substring(dash + 3).trim());
     }
-    onlineLoading = false;
-    notifyListeners();
-  }
-
-  Future<void> searchOnline(String q) async {
-    if (q.trim().isEmpty) return loadTrending();
-    onlineLoading = true;
-    onlineError = null;
-    notifyListeners();
-    try {
-      onlineTracks = await _api.search(q.trim());
-    } catch (e) {
-      onlineError = 'Search failed. Check your connection.';
-    }
-    onlineLoading = false;
-    notifyListeners();
+    return ('Unknown artist', base);
   }
 
   void toggleFavorite(Track t) {
@@ -255,11 +308,25 @@ class PlayerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void favoriteAll(List<Track> tracks) {
+    for (final t in tracks.reversed) {
+      if (!isFavorite(t)) favorites.insert(0, t);
+    }
+    _save();
+    notifyListeners();
+  }
+
   void _addRecent(Track t) {
     recent.removeWhere((r) => r.id == t.id);
     recent.insert(0, t);
-    if (recent.length > 20) recent.removeLast();
+    if (recent.length > 30) recent.removeLast();
     _save();
+  }
+
+  void toggleTheme() {
+    themeMode = themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+    _save();
+    notifyListeners();
   }
 
   // ---- Persistence --------------------------------------------------------
@@ -267,24 +334,25 @@ class PlayerController extends ChangeNotifier {
   Future<void> _save() async {
     try {
       final p = await SharedPreferences.getInstance();
-      String enc(List<Track> l) =>
-          jsonEncode(l.where((t) => t.isPersistable).map((t) => t.toJson()).toList());
+      String enc(List<Track> l) => jsonEncode(
+          l.where((t) => t.isPersistable).map((t) => t.toJson()).toList());
       await p.setString('local', enc(localTracks));
       await p.setString('favorites', enc(favorites));
       await p.setString('recent', enc(recent));
+      await p.setString('theme', themeMode.name);
     } catch (_) {}
   }
 
   Future<void> _restore() async {
     try {
       final p = await SharedPreferences.getInstance();
-      List<Track> dec(String k) =>
-          ((jsonDecode(p.getString(k) ?? '[]')) as List)
-              .map((e) => Track.fromJson(e as Map<String, dynamic>))
-              .toList();
+      List<Track> dec(String k) => ((jsonDecode(p.getString(k) ?? '[]')) as List)
+          .map((e) => Track.fromJson(e as Map<String, dynamic>))
+          .toList();
       localTracks.addAll(dec('local'));
       favorites.addAll(dec('favorites'));
       recent.addAll(dec('recent'));
+      themeMode = p.getString('theme') == 'dark' ? ThemeMode.dark : ThemeMode.light;
       notifyListeners();
     } catch (_) {}
   }

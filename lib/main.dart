@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:provider/provider.dart';
 
+import 'state/lyrics_controller.dart';
 import 'state/player_controller.dart';
-import 'ui/home_screen.dart';
+import 'ui/shell.dart';
+import 'ui/theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -15,42 +17,29 @@ Future<void> main() async {
       androidNotificationOngoing: true,
     );
   }
-  runApp(ChangeNotifierProvider(
-    create: (_) => PlayerController(),
+  final player = PlayerController();
+  runApp(MultiProvider(
+    providers: [
+      ChangeNotifierProvider.value(value: player),
+      ChangeNotifierProvider(create: (_) => LyricsController(player)),
+    ],
     child: const MusiclyApp(),
   ));
 }
 
-class MusiclyApp extends StatefulWidget {
+class MusiclyApp extends StatelessWidget {
   const MusiclyApp({super.key});
-  @override
-  State<MusiclyApp> createState() => _MusiclyAppState();
-}
-
-class _MusiclyAppState extends State<MusiclyApp> {
-  ThemeMode _mode = ThemeMode.system;
-
-  ThemeData _theme(Brightness b) => ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF5B5BD6), brightness: b),
-        appBarTheme: const AppBarTheme(scrolledUnderElevation: 0),
-      );
 
   @override
   Widget build(BuildContext context) {
+    final mode = context.select<PlayerController, ThemeMode>((c) => c.themeMode);
     return MaterialApp(
       title: 'Musicly',
       debugShowCheckedModeBanner: false,
-      theme: _theme(Brightness.light),
-      darkTheme: _theme(Brightness.dark),
-      themeMode: _mode,
-      home: HomeScreen(
-        onToggleTheme: () => setState(() {
-          final dark = Theme.of(context).brightness == Brightness.dark;
-          _mode = dark ? ThemeMode.light : ThemeMode.dark;
-        }),
-      ),
+      theme: buildTheme(Brightness.light),
+      darkTheme: buildTheme(Brightness.dark),
+      themeMode: mode,
+      home: const Shell(),
     );
   }
 }
