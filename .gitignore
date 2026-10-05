@@ -49,3 +49,4 @@ app.*.map.json
 musicly-web-release.zip
 *.apk
 release/
+android/build/
