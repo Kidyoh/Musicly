@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/telegram_channel.dart';
 import 'telegram_bot.dart';
 
 /// Keeps a copy of the whole library (likes, playlists, history, settings,
@@ -104,8 +105,8 @@ class TelegramBackup {
     return {...j, '_messageId': pinned!['message_id']};
   }
 
-  /// Writes a backup into preferences. The current bot token and channel win;
-  /// the backed-up Telegram song list is used when it's for the same channel.
+  /// Writes a backup into preferences. The current bot token wins; channels
+  /// and their song lists are merged with the ones in the backup.
   static Future<void> apply(Map<String, dynamic> backup) async {
     final p = await SharedPreferences.getInstance();
     final prefs = (backup['prefs'] as Map).cast<String, dynamic>();
@@ -130,13 +131,30 @@ class TelegramBackup {
     if (current != null && saved != null) {
       final cur = jsonDecode(current) as Map<String, dynamic>;
       final old = jsonDecode(saved) as Map<String, dynamic>;
-      if (old['channelId'] == cur['channelId']) {
-        await p.setString(
-          'telegram',
-          jsonEncode({...old, 'token': cur['token'], 'bot': cur['bot']}),
-        );
-      }
+      final channels = TelegramChannel.merge(
+        TelegramChannel.listFromSettings(cur),
+        TelegramChannel.listFromSettings(old),
+        sameBot: old['token'] == cur['token'],
+      );
+      await p.setString(
+        'telegram',
+        jsonEncode({
+          ...cur,
+          'userChat': cur['userChat'] ?? old['userChat'],
+          'channels': channels.map((c) => c.toJson()).toList(),
+          'forwarded': _union(cur['forwarded'], old['forwarded']),
+        }),
+      );
     }
+  }
+
+  static List<Object?> _union(Object? a, Object? b) {
+    final out = [...(a as List?) ?? const []];
+    final ids = {for (final t in out) (t as Map)['id']};
+    for (final t in (b as List?) ?? const []) {
+      if (ids.add((t as Map)['id'])) out.add(t);
+    }
+    return out;
   }
 
   Future<dynamic> _multipart(

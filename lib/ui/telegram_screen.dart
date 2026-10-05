@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../models/telegram_channel.dart';
 import '../services/telegram_bot.dart';
 import '../state/library_controller.dart';
 import 'collection_screen.dart';
@@ -14,24 +15,97 @@ import 'sheets.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
-/// Your Telegram channel, read straight from Telegram with a bot token.
+/// Your Telegram channels, read straight from Telegram with a bot token.
 /// No server: the token is typed in here and stays on this phone.
+///
+/// Without [channelId] it shows every channel's songs together (or the only
+/// channel); with it, just that channel.
 class TelegramScreen extends StatelessWidget {
-  const TelegramScreen({super.key});
+  const TelegramScreen({super.key, this.channelId});
+  final int? channelId;
 
   @override
   Widget build(BuildContext context) {
     final lib = context.watch<LibraryController>();
     if (!lib.channelConnected) return const _ConnectView();
+    final one = channelId != null
+        ? lib.channel(channelId!)
+        : lib.channels.length == 1
+        ? lib.channels.first
+        : null;
+    if (channelId != null && one == null) {
+      // The channel was just removed.
+      return const Scaffold(body: SizedBox.shrink());
+    }
+    if (one != null) {
+      final id = one.id;
+      return CollectionScreen(
+        key: ValueKey('tg-$id-${one.name}'),
+        title: one.name,
+        owner: 'Your Telegram channel',
+        kind: 'Channel',
+        live: (l) => l.channel(id)?.tracks ?? const [],
+        onRefresh: lib.syncTelegram,
+        actions: [_ChannelMenuButton(channelId: id)],
+        banner: const _ChannelBanner(),
+      );
+    }
     return CollectionScreen(
-      key: ValueKey(lib.channelName),
-      title: lib.channelName ?? 'Telegram',
-      owner: 'Your Telegram channel',
-      kind: 'Channel',
+      key: ValueKey('tg-all-${lib.channels.length}'),
+      title: 'Telegram',
+      owner: '${lib.channels.length} channels',
+      kind: 'Channels',
       live: (l) => l.channelTracks,
       onRefresh: lib.syncTelegram,
       actions: const [_ChannelMenuButton()],
-      banner: const _ChannelBanner(),
+      banner: const _ChannelsStrip(),
+    );
+  }
+}
+
+/// Opens the guided setup for connecting one more channel.
+void addTelegramChannel(BuildContext context) => Navigator.of(context)
+    .push(MaterialPageRoute(builder: (_) => const _ConnectView(adding: true)));
+
+/// Every connected channel as a chip, plus "Add channel", above the songs.
+class _ChannelsStrip extends StatelessWidget {
+  const _ChannelsStrip();
+
+  @override
+  Widget build(BuildContext context) {
+    final lib = context.watch<LibraryController>();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 44,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            children: [
+              for (final c in lib.channels)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ActionChip(
+                    avatar: const Icon(AppIcons.telegram, size: 16),
+                    label: Text('${c.name} · ${c.tracks.length}'),
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => TelegramScreen(channelId: c.id),
+                      ),
+                    ),
+                  ),
+                ),
+              ActionChip(
+                avatar: const Icon(AppIcons.add, size: 16),
+                label: const Text('Add channel'),
+                onPressed: () => addTelegramChannel(context),
+              ),
+            ],
+          ),
+        ),
+        const _ChannelBanner(),
+      ],
     );
   }
 }
@@ -195,7 +269,10 @@ class _ChannelBanner extends StatelessWidget {
 }
 
 class _ChannelMenuButton extends StatelessWidget {
-  const _ChannelMenuButton();
+  const _ChannelMenuButton({this.channelId});
+
+  /// The channel this page shows, or null on the all-channels page.
+  final int? channelId;
 
   @override
   Widget build(BuildContext context) => IconButton(
@@ -217,7 +294,9 @@ class _ChannelMenuButton extends StatelessWidget {
               contentPadding: const EdgeInsets.symmetric(horizontal: 24),
               leading: const Icon(AppIcons.telegramOn),
               title: Text(
-                lib.channelName ?? 'Telegram',
+                channelId != null
+                    ? (lib.channel(channelId!)?.name ?? 'Telegram')
+                    : lib.channelName ?? 'Telegram',
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
               subtitle: Text('Read by @${lib.botUsername ?? 'your bot'}'),
@@ -264,15 +343,31 @@ class _ChannelMenuButton extends StatelessWidget {
                 if (!lib.canImport) {
                   await lib.syncTelegram(); // maybe they just pressed Start
                 }
+                if (!context.mounted) return;
                 if (lib.canImport) {
-                  lib.importTelegramHistory();
-                } else if (context.mounted) {
+                  final c = channelId != null
+                      ? lib.channel(channelId!)
+                      : lib.channels.length == 1
+                      ? lib.channels.first
+                      : await _pickChannel(context, lib);
+                  if (c != null) lib.importTelegramHistory(c);
+                } else {
                   _openBot(lib.botUsername);
                   toast(
                     context,
                     'Press Start in the bot chat, then come back and import.',
                   );
                 }
+              },
+            ),
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+              leading: const Icon(AppIcons.add),
+              title: const Text('Add another channel'),
+              subtitle: const Text('The same bot can read all your channels'),
+              onTap: () {
+                Navigator.pop(ctx);
+                addTelegramChannel(context);
               },
             ),
             ListTile(
@@ -313,10 +408,26 @@ class _ChannelMenuButton extends StatelessWidget {
                 }
               },
             ),
+            if (channelId != null && lib.channels.length > 1)
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+                leading: const Icon(AppIcons.trash),
+                title: const Text('Remove this channel'),
+                subtitle: const Text('Songs saved on this phone stay'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Navigator.maybePop(context);
+                  lib.removeChannel(channelId!);
+                },
+              ),
             ListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 24),
               leading: const Icon(AppIcons.close),
-              title: const Text('Disconnect channel'),
+              title: Text(
+                lib.channels.length > 1
+                    ? 'Disconnect all channels'
+                    : 'Disconnect channel',
+              ),
               onTap: () {
                 Navigator.pop(ctx);
                 lib.disconnectTelegram();
@@ -329,6 +440,37 @@ class _ChannelMenuButton extends StatelessWidget {
     );
   }
 }
+
+Future<TelegramChannel?> _pickChannel(
+  BuildContext context,
+  LibraryController lib,
+) => showModalBottomSheet<TelegramChannel>(
+  context: context,
+  useRootNavigator: true,
+  builder: (ctx) => SafeArea(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const ListTile(
+          contentPadding: EdgeInsets.symmetric(horizontal: 24),
+          title: Text(
+            'Import older songs from…',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
+        for (final c in lib.channels)
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+            leading: const Icon(AppIcons.telegram),
+            title: Text(c.name),
+            subtitle: Text(count(c.tracks.length, 'song')),
+            onTap: () => Navigator.pop(ctx, c),
+          ),
+        const SizedBox(height: 8),
+      ],
+    ),
+  ),
+);
 
 String _backupLabel(LibraryController lib) {
   if (!lib.backupReady) return 'Press Start in your bot first';
@@ -351,7 +493,10 @@ void _openBot(String? username) {
 }
 
 class _ConnectView extends StatefulWidget {
-  const _ConnectView();
+  const _ConnectView({this.adding = false});
+
+  /// Connecting one more channel with the bot that's already set up.
+  final bool adding;
   @override
   State<_ConnectView> createState() => _ConnectViewState();
 }
@@ -380,6 +525,9 @@ class _ConnectViewState extends State<_ConnectView> {
   void initState() {
     super.initState();
     _token.addListener(_tokenChanged);
+    // The bot is already set up: skip straight to adding a channel.
+    final existing = context.read<LibraryController>().bot?.token;
+    if (existing != null) _token.text = existing;
   }
 
   @override
@@ -440,7 +588,10 @@ class _ConnectViewState extends State<_ConnectView> {
   Future<void> _findChannels() async {
     final token = _checkedToken;
     try {
-      final found = await TelegramBot(token).adminChannels();
+      final lib = context.read<LibraryController>();
+      final found = (await TelegramBot(
+        token,
+      ).adminChannels()).where((c) => lib.channel(c.id) == null).toList();
       if (!mounted || token != _checkedToken) return;
       if (found.length != _channels.length ||
           found.indexed.any((e) => _channels[e.$1].id != e.$2.id)) {
@@ -483,7 +634,10 @@ class _ConnectViewState extends State<_ConnectView> {
       _busy = false;
       _error = err;
     });
-    if (err == null) toast(context, 'Connected to ${lib.channelName}');
+    if (err == null) {
+      toast(context, 'Connected to ${lib.channels.last.name}');
+      if (widget.adding) Navigator.maybePop(context);
+    }
   }
 
   @override
@@ -566,9 +720,9 @@ class _ConnectViewState extends State<_ConnectView> {
             ),
           ),
           const SizedBox(height: 18),
-          const Text(
-            'Your Telegram channel',
-            style: TextStyle(
+          Text(
+            widget.adding ? 'Add another channel' : 'Your Telegram channel',
+            style: const TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.w700,
               letterSpacing: -0.6,
@@ -576,7 +730,9 @@ class _ConnectViewState extends State<_ConnectView> {
           ),
           const SizedBox(height: 6),
           Text(
-            'Play the full songs from any channel you run. Takes about a minute — just follow the three steps.',
+            widget.adding
+                ? 'Your bot is ready. Add it to another channel you run and pick it below.'
+                : 'Play the full songs from any channel you run. Takes about a minute — just follow the three steps.',
             style: TextStyle(color: p.sub, height: 1.45),
           ),
           const SizedBox(height: 28),

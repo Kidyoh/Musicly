@@ -383,10 +383,20 @@ class LibraryScreen extends StatelessWidget {
                   ? (lib.channelName ?? 'Telegram')
                   : 'Your Telegram channel',
               lib.channelConnected
-                  ? '${count(lib.channelTracks.length, 'song')} • full length'
+                  ? lib.channels.length > 1
+                        ? '${count(lib.channels.length, 'channel')} • ${count(lib.channelTracks.length, 'song')}'
+                        : '${count(lib.channelTracks.length, 'song')} • full length'
                   : 'Stream songs from your own channel',
               () => openPage(context, const TelegramScreen()),
             ),
+            if (lib.channels.length > 1)
+              for (final ch in lib.channels)
+                tile(
+                  square(AppIcons.telegram),
+                  ch.name,
+                  '${count(ch.tracks.length, 'song')} • Telegram channel',
+                  () => openPage(context, TelegramScreen(channelId: ch.id)),
+                ),
             tile(
               square(AppIcons.radio),
               'Live radio',

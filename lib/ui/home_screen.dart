@@ -109,15 +109,17 @@ class HomeScreen extends StatelessWidget {
                   ],
                 ),
               ],
-              if (lib.channelTracks.isNotEmpty) ...[
-                SectionHeader(
-                  lib.channelName ?? 'Your channel',
-                  subtitle: 'New in your Telegram channel',
-                  action: 'See all',
-                  onAction: () => openPage(context, const TelegramScreen()),
-                ),
-                songRows(lib.channelTracks),
-              ],
+              for (final ch in lib.channels)
+                if (ch.tracks.isNotEmpty) ...[
+                  SectionHeader(
+                    ch.name,
+                    subtitle: 'New in your Telegram channel',
+                    action: 'See all',
+                    onAction: () =>
+                        openPage(context, TelegramScreen(channelId: ch.id)),
+                  ),
+                  songRows(ch.tracks),
+                ],
               if (lib.stations.isNotEmpty) ...[
                 SectionHeader(
                   'Live radio',
