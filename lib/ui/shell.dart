@@ -279,9 +279,7 @@ class _MiniPlayer extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Icon(
-                                c.player.playing
-                                    ? AppIcons.pause
-                                    : AppIcons.play,
+                                c.isPlaying ? AppIcons.pause : AppIcons.play,
                                 size: 20,
                                 color: const Color(0xFF1C1D22),
                               ),

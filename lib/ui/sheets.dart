@@ -160,25 +160,28 @@ void showTrackOptions(
                 const SnackBar(content: Text('Added to queue')),
               );
             }),
-            if (t.artistId != null)
+            if (!t.isRadio && t.artist != 'Unknown artist')
               _tile(AppIcons.artist, 'Go to artist', () {
                 Navigator.pop(ctx);
-                openArtist(context, t.artistId!, t.artist);
+                openArtist(context, t.artist);
               }),
-            if (t.albumId != null && t.source == TrackSource.deezer)
+            if (t.source == TrackSource.device && t.albumId != null)
               _tile(AppIcons.disc, 'Go to album', () {
                 Navigator.pop(ctx);
                 openAlbumOf(context, t);
               }),
-            if (t.source == TrackSource.deezer)
-              _tile(AppIcons.radio, 'Start song radio', () async {
+            if (t.source == TrackSource.telegram &&
+                !lib.isDownloaded(t) &&
+                lib.canDownload)
+              _tile(AppIcons.download, 'Save to this phone', () {
                 Navigator.pop(ctx);
-                if (t.artistId == null) return;
-                final radio = await lib.api.artistRadio(t.artistId!, limit: 40);
-                c.playQueue([t, ...radio.where((x) => x.id != t.id)], 0);
+                lib.downloadSongs([t]);
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Saving to Music/Musicly')),
+                );
               }),
-            if (t.link != null)
-              _tile(AppIcons.external, 'Play full song on Deezer', () {
+            if (t.isRadio && t.link != null)
+              _tile(AppIcons.external, 'Open station website', () {
                 Navigator.pop(ctx);
                 launchUrl(
                   Uri.parse(t.link!),
@@ -622,7 +625,7 @@ void showQueue(BuildContext context) {
                             if (active)
                               Padding(
                                 padding: const EdgeInsets.all(12),
-                                child: EqualizerBars(playing: c.player.playing),
+                                child: EqualizerBars(playing: c.isPlaying),
                               )
                             else
                               IconButton(

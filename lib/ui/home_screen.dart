@@ -32,12 +32,23 @@ class HomeScreen extends StatelessWidget {
     final c = context.read<PlayerController>();
     final p = Palette.of(context);
     final dark = Theme.of(context).brightness == Brightness.dark;
+    final songs = lib.allSongs;
+    final most = lib.mostPlayed.take(5).toList();
+
+    Widget songRows(List<Track> list, {int max = 5}) => Column(
+      children: [
+        for (var i = 0; i < list.length.clamp(0, max); i++)
+          ArtTrackRow(track: list[i], onTap: () => c.playQueue(list, i)),
+      ],
+    );
 
     return Scaffold(
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(
-          onRefresh: lib.loadHome,
+          onRefresh: () async {
+            await Future.wait([lib.loadHome(), lib.syncTelegram()]);
+          },
           child: ListView(
             padding: const EdgeInsets.only(bottom: 28),
             children: [
@@ -78,175 +89,137 @@ class HomeScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              if (lib.homeError != null && lib.chart.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 40),
-                  child: EmptyState(
-                    icon: AppIcons.offline,
-                    text: lib.homeError!,
-                    action: OutlinedButton(
-                      onPressed: lib.loadHome,
-                      child: const Text('Retry'),
-                    ),
-                  ),
-                )
-              else if (lib.homeLoading && lib.chart.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(80),
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              else ...[
-                const SizedBox(height: 18),
-                _ForYouCard(lib: lib),
-                if (lib.recent.isNotEmpty) ...[
-                  const SectionHeader('Jump back in'),
-                  HRow(
-                    height: 196,
-                    children: [
-                      for (var i = 0; i < lib.recent.length.clamp(0, 12); i++)
-                        CoverCard(
-                          title: lib.recent[i].title,
-                          subtitle: lib.recent[i].artist,
-                          art: Artwork(lib.recent[i], size: 148, radius: 16),
-                          onTap: () => c.playQueue(lib.recent, i),
-                        ),
-                    ],
-                  ),
-                ],
-                if (lib.becauseRelated.isNotEmpty) ...[
-                  SectionHeader(
-                    lib.becauseArtist!.name,
-                    subtitle: 'Because you like',
-                  ),
-                  HRow(
-                    height: 130,
-                    children: [
-                      for (final a in lib.becauseRelated)
-                        ArtistBubble(
-                          artist: a,
-                          onTap: () => openArtist(context, a.id, a.name),
-                        ),
-                    ],
-                  ),
-                ],
+              const SizedBox(height: 18),
+              _ForYouCard(lib: lib),
+              if (songs.isEmpty) const _GetStarted(),
+              if (lib.recent.isNotEmpty) ...[
+                const SectionHeader('Jump back in'),
+                HRow(
+                  height: 196,
+                  children: [
+                    for (var i = 0; i < lib.recent.length.clamp(0, 12); i++)
+                      CoverCard(
+                        title: lib.recent[i].title,
+                        subtitle: lib.recent[i].artist,
+                        art: lib.recent[i].isRadio
+                            ? StationArt(lib.recent[i], size: 148, radius: 16)
+                            : Artwork(lib.recent[i], size: 148, radius: 16),
+                        onTap: () => c.playQueue(lib.recent, i),
+                      ),
+                  ],
+                ),
+              ],
+              if (lib.channelTracks.isNotEmpty) ...[
                 SectionHeader(
-                  'Top songs',
-                  subtitle: 'Worldwide chart',
+                  lib.channelName ?? 'Your channel',
+                  subtitle: 'New in your Telegram channel',
+                  action: 'See all',
+                  onAction: () => openPage(context, const TelegramScreen()),
+                ),
+                songRows(lib.channelTracks),
+              ],
+              if (lib.stations.isNotEmpty) ...[
+                SectionHeader(
+                  'Live radio',
+                  subtitle: 'Real stations, streaming now',
+                  action: 'See all',
+                  onAction: () => openPage(context, const RadioScreen()),
+                ),
+                HRow(
+                  height: 178,
+                  children: [
+                    for (var i = 0; i < lib.stations.length; i++)
+                      StationCard(
+                        station: lib.stations[i],
+                        onTap: () => c.playQueue(lib.stations, i),
+                      ),
+                  ],
+                ),
+              ],
+              if (lib.artists.isNotEmpty) ...[
+                const SectionHeader('Your artists'),
+                HRow(
+                  height: 148,
+                  children: [
+                    for (final (name, list) in lib.artists.take(15))
+                      ArtistBubble(
+                        name: name,
+                        cover: list.firstWhere(
+                          (t) => t.artworkUrl != null || t.mediaId != null,
+                          orElse: () => list.first,
+                        ),
+                        subtitle: count(list.length, 'song'),
+                        onTap: () => openArtist(context, name),
+                      ),
+                  ],
+                ),
+              ],
+              if (most.isNotEmpty) ...[
+                SectionHeader(
+                  'On repeat',
+                  subtitle: 'Your most played',
                   action: 'See all',
                   onAction: () => onOpenTab(3),
                 ),
-                for (var i = 0; i < lib.chart.length.clamp(0, 5); i++)
-                  ArtTrackRow(
-                    track: lib.chart[i],
-                    onTap: () => c.playQueue(lib.chart, i),
-                    leading: SizedBox(
-                      width: 22,
-                      child: Text(
-                        '${i + 1}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ),
+                songRows(most),
+              ],
+              if (lib.localTracks.isNotEmpty) ...[
+                SectionHeader(
+                  'On this phone',
+                  action: 'See all',
+                  onAction: () => openLive(
+                    context,
+                    'On this phone',
+                    'Your music',
+                    (l) => l.localTracks,
+                    removableFiles: true,
                   ),
-                if (lib.channelTracks.isNotEmpty) ...[
-                  SectionHeader(
-                    lib.channelName ?? 'Your channel',
-                    subtitle: 'From your Telegram channel',
-                    action: 'See all',
-                    onAction: () => openPage(context, const TelegramScreen()),
-                  ),
-                  for (var i = 0; i < lib.channelTracks.length.clamp(0, 5); i++)
-                    ArtTrackRow(
-                      track: lib.channelTracks[i],
-                      onTap: () => c.playQueue(lib.channelTracks, i),
-                    ),
-                ],
-                if (lib.stations.isNotEmpty) ...[
-                  SectionHeader(
-                    'Live radio',
-                    subtitle: 'Real stations, streaming now',
-                    action: 'See all',
-                    onAction: () => openPage(context, const RadioScreen()),
-                  ),
-                  HRow(
-                    height: 178,
-                    children: [
-                      for (var i = 0; i < lib.stations.length; i++)
-                        StationCard(
-                          station: lib.stations[i],
-                          onTap: () => c.playQueue(lib.stations, i),
-                        ),
-                    ],
-                  ),
-                ],
-                if (lib.freeSongs.isNotEmpty) ...[
-                  SectionHeader(
-                    'Free full songs',
-                    subtitle: 'Independent artists on Audius',
-                    action: 'See all',
-                    onAction: () => openLive(
-                      context,
-                      'Free full songs',
-                      'Audius',
-                      (l) => l.freeSongs,
-                      kind: 'Full-length',
-                    ),
-                  ),
-                  for (var i = 0; i < lib.freeSongs.length.clamp(0, 5); i++)
-                    ArtTrackRow(
-                      track: lib.freeSongs[i],
-                      onTap: () => c.playQueue(lib.freeSongs, i),
-                    ),
-                ],
-                if (lib.topArtists.isNotEmpty) ...[
-                  const SectionHeader('Popular artists'),
-                  HRow(
-                    height: 130,
-                    children: [
-                      for (final a in lib.topArtists)
-                        ArtistBubble(
-                          artist: a,
-                          onTap: () => openArtist(context, a.id, a.name),
-                        ),
-                    ],
-                  ),
-                ],
-                if (lib.topAlbums.isNotEmpty) ...[
-                  const SectionHeader('Top albums'),
-                  HRow(
-                    height: 206,
-                    children: [
-                      for (final a in lib.topAlbums)
-                        CoverCard(
-                          title: a.title,
-                          subtitle: a.owner,
-                          art: Artwork(a.coverTrack, size: 148, radius: 16),
-                          onTap: () => openCollection(context, a),
-                        ),
-                    ],
-                  ),
-                ],
-                if (lib.topPlaylists.isNotEmpty) ...[
-                  const SectionHeader('Playlists we love'),
-                  HRow(
-                    height: 206,
-                    children: [
-                      for (final pl in lib.topPlaylists)
-                        CoverCard(
-                          title: pl.title,
-                          subtitle: count(pl.trackCount ?? 0, 'song'),
-                          art: Artwork(pl.coverTrack, size: 148, radius: 16),
-                          onTap: () => openCollection(context, pl),
-                        ),
-                    ],
-                  ),
-                ],
+                ),
+                songRows(lib.localTracks),
               ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown until there's music: connect Telegram or add phone songs.
+class _GetStarted extends StatelessWidget {
+  const _GetStarted();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: p.card,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Bring your music',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Connect your Telegram channel or add the songs on this phone. '
+              'Your mix, artists and hotlist are built from them.',
+              style: TextStyle(color: p.sub, height: 1.5),
+            ),
+            const SizedBox(height: 14),
+            PillButton(
+              icon: AppIcons.telegram,
+              label: 'Connect Telegram',
+              onPressed: () => openPage(context, const TelegramScreen()),
+            ),
+          ],
         ),
       ),
     );
@@ -266,7 +239,9 @@ class _ForYouCard extends StatelessWidget {
     final covers = <Track>[];
     final seen = <String>{};
     for (final t in mix) {
-      if (t.artworkUrl != null && seen.add(t.artworkUrl!)) covers.add(t);
+      final key =
+          t.artworkUrl ?? (t.mediaId == null ? null : 'ms:${t.mediaId}');
+      if (key != null && seen.add(key)) covers.add(t);
       if (covers.length == 3) break;
     }
 
@@ -349,7 +324,7 @@ class _ForYouCard extends StatelessWidget {
                       SizedBox(
                         width: 170,
                         child: Text(
-                          lib.forYouReason ?? 'Building your mix…',
+                          lib.forYouReason ?? 'Connect Telegram or add phone music to get your mix',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(

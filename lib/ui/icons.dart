@@ -165,6 +165,11 @@ abstract final class AppIcons {
     0xe1ac,
     fontFamily: 'PhosphorRegular',
   );
+  static const IconData download = IconData(
+    0xe20c,
+    fontFamily: 'PhosphorRegular',
+  );
+  static const IconData saved = IconData(0xe184, fontFamily: 'PhosphorFill');
   static const IconData key = IconData(0xe2d6, fontFamily: 'PhosphorRegular');
   static const IconData headphones = IconData(
     0xe2a6,

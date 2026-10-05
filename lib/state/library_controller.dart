@@ -9,17 +9,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/collection.dart';
 import '../models/track.dart';
-import '../services/audius_api.dart';
 import '../services/telegram_backup.dart';
 import '../services/telegram_bot.dart';
-import '../services/deezer_api.dart';
 import '../services/device_library.dart';
 import '../services/radio_api.dart';
 
 /// Everything the user owns or that's personalised: likes, playlists,
-/// followed artists, phone music, history and the home feed.
+/// the Telegram channel, phone music, history, downloads and the home feed.
+/// Every song here plays in full; there are no previews.
 class LibraryController extends ChangeNotifier {
-  LibraryController(this.api) {
+  LibraryController() {
     _restore().then((_) {
       loadHome();
       if (channelConnected) _startSync();
@@ -27,8 +26,6 @@ class LibraryController extends ChangeNotifier {
     });
   }
 
-  final DeezerApi api;
-  final AudiusApi audius = AudiusApi();
   final RadioApi radio = RadioApi();
 
   ThemeMode themeMode = ThemeMode.light;
@@ -38,11 +35,10 @@ class LibraryController extends ChangeNotifier {
   final List<Track> files = []; // picked with the file picker
   List<Track> deviceTracks = []; // scanned from the phone
   final List<UserPlaylist> playlists = [];
-  final List<Artist> following = [];
 
-  /// Plays per Deezer artist id, with the name kept for display.
-  final Map<String, int> _plays = {};
-  final Map<String, String> _artistNames = {};
+  /// Plays per song id and per artist name (lower-case), for "Your mix".
+  final Map<String, int> _trackPlays = {};
+  final Map<String, int> _artistPlays = {};
 
   // Telegram channel, read directly with the Bot API (no server)
   TelegramBot? bot;
@@ -65,8 +61,17 @@ class LibraryController extends ChangeNotifier {
   bool get channelConnected => bot != null && channelId != null;
   bool get canImport => _userChatId != null;
 
-  // Backup of the whole library in the bot chat (survives reinstalls)
+  // Channel songs saved to Music/Musicly on the phone
+  bool autoDownload = true;
+  final Map<String, Track> _downloads = {}; // channel track id -> phone copy
+  bool downloading = false;
+  int downloadDone = 0;
+  int downloadTotal = 0;
+  String? downloadError;
+
+  // Backups: a pinned file in the bot chat, and a file in the phone's Download folder
   DateTime? lastBackup;
+  DateTime? lastLocalBackup;
   bool backingUp = false;
   String? backupNote; // e.g. "Restored 120 songs and 4 playlists"
   int? _backupMsgId;
@@ -82,28 +87,29 @@ class LibraryController extends ChangeNotifier {
   String? scanError;
 
   // Home feed
-  List<Track> chart = [];
-  List<Collection> topAlbums = [];
-  List<Artist> topArtists = [];
-  List<Collection> topPlaylists = [];
-  List<Genre> genres = [];
   List<Track> forYou = [];
-  List<Track> freeSongs = []; // full-length, from Audius
+  String? forYouReason;
   List<Track> stations = []; // live radio, local first
   String? countryCode;
-  String? forYouReason;
-  Artist? becauseArtist;
-  List<Artist> becauseRelated = [];
-  bool homeLoading = false;
-  String? homeError;
 
   bool isFavorite(Track t) => favorites.any((f) => f.id == t.id);
 
   List<Track> get likedSongs => favorites.where((t) => !t.isRadio).toList();
   List<Track> get savedStations => favorites.where((t) => t.isRadio).toList();
-  bool isFollowing(String artistId) => following.any((a) => a.id == artistId);
 
-  List<Track> get localTracks => [...deviceTracks, ...files];
+  /// Phone songs, minus the copies Musicly downloaded from the channel
+  /// (those show up as channel songs instead).
+  List<Track> get localTracks {
+    final copies = {for (final d in _downloads.values) d.id};
+    return [...deviceTracks.where((t) => !copies.contains(t.id)), ...files];
+  }
+
+  /// Every full song the user has: channel first, then phone.
+  List<Track> get allSongs => [...channelTracks, ...localTracks];
+
+  /// The phone copy of a channel song, when it has been downloaded.
+  Track? downloadedCopy(Track t) => _downloads[t.id];
+  bool isDownloaded(Track t) => _downloads.containsKey(t.id);
 
   // ---- History & recommendations -----------------------------------------
 
@@ -111,117 +117,140 @@ class LibraryController extends ChangeNotifier {
     recent.removeWhere((r) => r.id == t.id);
     recent.insert(0, t);
     if (recent.length > 50) recent.removeLast();
-    if (t.isRadio) radio.countClick(t.id);
-    if (t.artistId != null && t.source == TrackSource.deezer) {
-      _plays[t.artistId!] = (_plays[t.artistId!] ?? 0) + 1;
-      _artistNames[t.artistId!] = t.artist;
+    if (t.isRadio) {
+      radio.countClick(t.id);
+    } else {
+      _trackPlays[t.id] = (_trackPlays[t.id] ?? 0) + 1;
+      final a = t.artist.toLowerCase();
+      if (a.isNotEmpty && a != 'unknown artist') {
+        _artistPlays[a] = (_artistPlays[a] ?? 0) + 1;
+      }
     }
     _save();
     notifyListeners();
   }
 
-  /// Artists ranked by plays, likes and follows.
-  List<(String, String)> topSeedArtists([int n = 3]) {
+  /// Artist names ranked by plays and likes.
+  List<String> topArtists([int n = 5]) {
     final score = <String, double>{};
-    _plays.forEach((id, c) => score[id] = (score[id] ?? 0) + c.toDouble());
-    for (final f in favorites) {
-      if (f.artistId != null && f.source == TrackSource.deezer) {
-        score[f.artistId!] = (score[f.artistId!] ?? 0) + 3;
-        _artistNames[f.artistId!] = f.artist;
-      }
+    final display = <String, String>{};
+    for (final t in allSongs) {
+      display[t.artist.toLowerCase()] = t.artist;
     }
-    for (final a in following) {
-      score[a.id] = (score[a.id] ?? 0) + 6;
-      _artistNames[a.id] = a.name;
+    _artistPlays.forEach((a, c) => score[a] = (score[a] ?? 0) + c);
+    for (final f in likedSongs) {
+      final a = f.artist.toLowerCase();
+      score[a] = (score[a] ?? 0) + 3;
     }
-    final ids = score.keys.toList()
+    score.removeWhere(
+      (a, _) => a == 'unknown artist' || !display.containsKey(a),
+    );
+    final ranked = score.keys.toList()
       ..sort((a, b) => score[b]!.compareTo(score[a]!));
-    return ids.take(n).map((id) => (id, _artistNames[id] ?? '')).toList();
+    return ranked.take(n).map((a) => display[a]!).toList();
   }
 
-  Future<void> buildForYou() async {
-    var seeds = topSeedArtists();
-    final personal = seeds.isNotEmpty;
-    if (!personal && topArtists.isNotEmpty) {
-      seeds = topArtists.take(3).map((a) => (a.id, a.name)).toList();
-    }
-    if (seeds.isEmpty) return;
-    try {
-      final radios = await Future.wait(
-        seeds.map((s) => api.artistRadio(s.$1, limit: 20)),
+  /// Songs ordered by how much you play them.
+  List<Track> get mostPlayed {
+    final songs = allSongs.where((t) => (_trackPlays[t.id] ?? 0) > 0).toList()
+      ..sort(
+        (a, b) => (_trackPlays[b.id] ?? 0).compareTo(_trackPlays[a.id] ?? 0),
       );
-      final seen = <String>{};
-      final mix = <Track>[];
-      // Interleave so the mix isn't one artist after another.
-      for (var i = 0; i < 20; i++) {
-        for (final r in radios) {
-          if (i < r.length && seen.add(r[i].id)) mix.add(r[i]);
-        }
-      }
-      forYou = mix.take(40).toList();
-      forYouReason = personal
-          ? 'Based on ${seeds.map((s) => s.$2).where((n) => n.isNotEmpty).take(2).join(' & ')}'
-          : 'Popular right now. Like songs to personalise';
-      final top = seeds.first;
-      becauseArtist = Artist(id: top.$1, name: top.$2);
-      becauseRelated = personal ? await api.relatedArtists(top.$1) : [];
-      notifyListeners();
-    } catch (_) {}
+    return songs;
+  }
+
+  int plays(Track t) => _trackPlays[t.id] ?? 0;
+
+  /// Your artists (channel + phone), most songs first.
+  List<(String, List<Track>)> get artists {
+    final map = <String, List<Track>>{};
+    final names = <String, String>{};
+    for (final t in allSongs) {
+      final k = t.artist.toLowerCase();
+      if (k == 'unknown artist') continue;
+      names[k] ??= t.artist;
+      map.putIfAbsent(k, () => []).add(t);
+    }
+    final out = [for (final e in map.entries) (names[e.key]!, e.value)]
+      ..sort((a, b) => b.$2.length.compareTo(a.$2.length));
+    return out;
+  }
+
+  List<Track> songsBy(String artist) {
+    final k = artist.toLowerCase();
+    return allSongs.where((t) => t.artist.toLowerCase() == k).toList();
+  }
+
+  /// "Your mix": a fresh blend of your own channel and phone songs, weighted
+  /// toward what you like and play, mixed with songs you haven't heard lately.
+  void buildForYou() {
+    final pool = allSongs;
+    if (pool.isEmpty) {
+      forYou = [];
+      forYouReason = null;
+      return;
+    }
+    final rng = Random(DateTime.now().day * 31 + DateTime.now().hour ~/ 6);
+    final top = topArtists(3).map((a) => a.toLowerCase()).toSet();
+    final liked = {for (final t in likedSongs) t.id};
+    final lately = {for (final t in recent.take(8)) t.id};
+    double weight(Track t) {
+      var w = 1.0;
+      if (liked.contains(t.id)) w += 3;
+      if (top.contains(t.artist.toLowerCase())) w += 2;
+      w += min(_trackPlays[t.id] ?? 0, 10) * 0.3;
+      if ((_trackPlays[t.id] ?? 0) == 0) w += 0.8; // something new
+      if (lately.contains(t.id)) w *= 0.2; // just heard it
+      return w;
+    }
+
+    // Weighted shuffle (Efraimidis–Spirakis): higher weight, earlier.
+    final keyed = [
+      for (final t in pool)
+        (pow(rng.nextDouble(), 1 / weight(t)).toDouble(), t),
+    ]..sort((a, b) => b.$1.compareTo(a.$1));
+    // Avoid the same artist twice in a row where possible.
+    final mix = <Track>[];
+    final rest = keyed.map((e) => e.$2).toList();
+    while (rest.isNotEmpty && mix.length < 40) {
+      final i = rest.indexWhere(
+        (t) =>
+            mix.isEmpty ||
+            t.artist.toLowerCase() != mix.last.artist.toLowerCase(),
+      );
+      mix.add(rest.removeAt(i < 0 ? 0 : i));
+    }
+    forYou = mix;
+    final names = topArtists(2);
+    final sources = [
+      if (channelTracks.isNotEmpty) 'your channel',
+      if (localTracks.isNotEmpty) 'your phone',
+    ].join(' & ');
+    forYouReason = names.isEmpty
+        ? 'A mix from $sources'
+        : 'From $sources · ${names.join(' & ')} and more';
   }
 
   Future<void> loadHome() async {
-    homeLoading = true;
-    homeError = null;
+    buildForYou();
     notifyListeners();
-    try {
-      final r = await Future.wait([
-        api.chartTracks(limit: 30),
-        api.chartAlbums(limit: 15),
-        api.chartArtists(limit: 15),
-        api.chartPlaylists(limit: 12),
-        api.genres(),
-      ]);
-      chart = r[0] as List<Track>;
-      topAlbums = r[1] as List<Collection>;
-      topArtists = r[2] as List<Artist>;
-      topPlaylists = r[3] as List<Collection>;
-      genres = r[4] as List<Genre>;
-    } catch (_) {
-      homeError = 'Could not load music. Check your connection.';
-    }
-    homeLoading = false;
-    notifyListeners();
-    await Future.wait([buildForYou(), _loadExtras()]);
-  }
-
-  /// Free full songs and live radio load alongside the main feed; either can
-  /// fail without hiding the rest of Home.
-  Future<void> _loadExtras() async {
     countryCode ??= PlatformDispatcher.instance.locale.countryCode;
-    await Future.wait([
-      audius
-          .trending(limit: 20)
-          .then((v) => freeSongs = v)
-          .catchError((_) => freeSongs),
-      (() async {
-        var local = <Track>[];
-        if (countryCode != null) {
-          local = await radio
-              .byCountry(countryCode!, limit: 12)
-              .catchError((_) => <Track>[]);
-        }
-        final top = await radio.top(limit: 20).catchError((_) => <Track>[]);
-        final seen = <String>{};
-        stations = [
-          ...local,
-          ...top,
-        ].where((t) => seen.add(t.id)).take(20).toList();
-      })(),
-    ]);
+    var local = <Track>[];
+    if (countryCode != null) {
+      local = await radio
+          .byCountry(countryCode!, limit: 12)
+          .catchError((_) => <Track>[]);
+    }
+    final top = await radio.top(limit: 20).catchError((_) => <Track>[]);
+    final seen = <String>{};
+    stations = [
+      ...local,
+      ...top,
+    ].where((t) => seen.add(t.id)).take(20).toList();
     notifyListeners();
   }
 
-  // ---- Likes & follows -----------------------------------------------------
+  // ---- Likes ------------------------------------------------------------------
 
   void toggleFavorite(Track t) {
     if (isFavorite(t)) {
@@ -236,16 +265,6 @@ class LibraryController extends ChangeNotifier {
   void favoriteAll(List<Track> tracks) {
     for (final t in tracks.reversed) {
       if (!isFavorite(t)) favorites.insert(0, t);
-    }
-    _save();
-    notifyListeners();
-  }
-
-  void toggleFollow(Artist a) {
-    if (isFollowing(a.id)) {
-      following.removeWhere((x) => x.id == a.id);
-    } else {
-      following.insert(0, a);
     }
     _save();
     notifyListeners();
@@ -397,6 +416,10 @@ class LibraryController extends ChangeNotifier {
         _restoreChecked = true;
         await restoreFromTelegram(onlyIfFresh: true);
       }
+      buildForYou();
+      if (autoDownload && canDownload && notDownloaded > 0) {
+        unawaited(downloadSongs(channelTracks));
+      }
     } on TelegramError catch (e) {
       channelError = e.code == 409
           ? 'Another app is reading this bot\'s updates. Use a bot just for Musicly.'
@@ -474,20 +497,21 @@ class LibraryController extends ChangeNotifier {
       id++;
     }
     importing = false;
+    buildForYou();
     await _save();
     notifyListeners();
+    if (autoDownload && canDownload && notDownloaded > 0) {
+      unawaited(downloadSongs(channelTracks));
+    }
   }
 
   void cancelImport() => _cancelImport = true;
 
   bool get _isFresh =>
-      favorites.isEmpty &&
-      playlists.isEmpty &&
-      following.isEmpty &&
-      recent.length < 3;
+      favorites.isEmpty && playlists.isEmpty && recent.length < 3;
 
   void _scheduleBackup() {
-    if (!backupReady) return;
+    if (!backupReady && !DeviceLibrary.supported) return;
     _backupTimer?.cancel();
     _backupTimer = Timer(const Duration(seconds: 20), backupNow);
   }
@@ -497,30 +521,79 @@ class LibraryController extends ChangeNotifier {
     if (_backupTimer?.isActive ?? false) backupNow();
   }
 
-  /// Saves the library to the pinned backup file in the bot chat.
+  /// Saves the library to Download/Musicly on the phone, and to the pinned
+  /// backup file in the bot chat when Telegram is set up.
   Future<bool> backupNow() async {
-    final b = bot, chat = _userChatId;
-    if (b == null || chat == null || backingUp) return false;
+    if (backingUp) return false;
     _backupTimer?.cancel();
     backingUp = true;
     notifyListeners();
+    var ok = false;
     try {
       final snap = await TelegramBackup.snapshot();
-      _backupMsgId = await TelegramBackup(
-        b,
-        chat,
-      ).upload(snap, existing: _backupMsgId);
-      lastBackup = DateTime.now();
       final p = await SharedPreferences.getInstance();
-      await p.setInt('backup_msg', _backupMsgId!);
-      await p.setString('backup_at', lastBackup!.toIso8601String());
-      return true;
+      if (await DeviceLibrary.saveBackupFile(jsonEncode(snap))) {
+        lastLocalBackup = DateTime.now();
+        await p.setString(
+          'local_backup_at',
+          lastLocalBackup!.toIso8601String(),
+        );
+        ok = true;
+      }
+      final b = bot, chat = _userChatId;
+      if (b != null && chat != null) {
+        _backupMsgId = await TelegramBackup(
+          b,
+          chat,
+        ).upload(snap, existing: _backupMsgId);
+        lastBackup = DateTime.now();
+        await p.setInt('backup_msg', _backupMsgId!);
+        await p.setString('backup_at', lastBackup!.toIso8601String());
+        ok = true;
+      }
     } catch (_) {
-      return false;
     } finally {
       backingUp = false;
       notifyListeners();
     }
+    return ok;
+  }
+
+  /// Restores from a musicly-backup.json the user picks (e.g. from
+  /// Download/Musicly after reinstalling). Returns an error message or null.
+  Future<String?> restoreFromFile() async {
+    final picked = await FilePicker.pickFiles(type: FileType.any);
+    if (picked.isEmpty) return 'No file chosen.';
+    try {
+      final j = jsonDecode(
+        utf8.decode(await picked.first.readAsBytes()),
+      ) as Map<String, dynamic>;
+      if (j['app'] != 'musicly') return 'That isn\'t a Musicly backup file.';
+      await _applyBackup(j);
+      return null;
+    } catch (_) {
+      return 'Could not read that file.';
+    }
+  }
+
+  Future<void> _applyBackup(Map<String, dynamic> backup) async {
+    await TelegramBackup.apply(backup);
+    await _reloadFromPrefs();
+    onRestored?.call();
+    String n(int c, String w) => '$c ${c == 1 ? w : '${w}s'}';
+    backupNote =
+        'Restored ${n(likedSongs.length, 'liked song')}, ${n(playlists.length, 'playlist')} and ${n(channelTracks.length, 'channel song')}';
+    restoreDismissed = true;
+    notifyListeners();
+  }
+
+  /// Hides the "restore your library" card on a fresh install.
+  bool restoreDismissed = false;
+  bool get showRestoreCard =>
+      !restoreDismissed && _isFresh && lastLocalBackup == null;
+  void dismissRestore() {
+    restoreDismissed = true;
+    notifyListeners();
   }
 
   /// Brings back a backup from the bot chat. With [onlyIfFresh], only on a
@@ -533,13 +606,7 @@ class LibraryController extends ChangeNotifier {
       final backup = await TelegramBackup(b, chat).latest();
       if (backup == null) return false;
       _backupMsgId = (backup['_messageId'] as num?)?.toInt();
-      await TelegramBackup.apply(backup);
-      await _reloadFromPrefs();
-      onRestored?.call();
-      String n(int c, String w) => '$c ${c == 1 ? w : '${w}s'}';
-      backupNote =
-          'Restored ${n(favorites.length, 'liked song')}, ${n(playlists.length, 'playlist')} and ${n(channelTracks.length, 'channel song')}';
-      notifyListeners();
+      await _applyBackup(backup);
       return true;
     } catch (_) {
       return false;
@@ -552,9 +619,9 @@ class LibraryController extends ChangeNotifier {
     recent.clear();
     files.clear();
     playlists.clear();
-    following.clear();
-    _plays.clear();
-    _artistNames.clear();
+    _trackPlays.clear();
+    _artistPlays.clear();
+    _downloads.clear();
     await _restore();
     bot ??= keepBot;
     _userChatId ??= keepChat;
@@ -565,6 +632,9 @@ class LibraryController extends ChangeNotifier {
 
   void disconnectTelegram() {
     _syncTimer?.cancel();
+    // Songs already saved stay on the phone and show up as phone music.
+    _downloads.clear();
+    if (deviceScanEnabled) scanDevice(askPermission: false);
     _backupTimer?.cancel();
     _cancelImport = true;
     bot = null;
@@ -575,6 +645,119 @@ class LibraryController extends ChangeNotifier {
     _save();
     notifyListeners();
   }
+
+  // ---- Saving channel songs to the phone ---------------------------------------
+
+  bool get canDownload => DeviceLibrary.supported && channelConnected;
+  int get notDownloaded =>
+      channelTracks.where((t) => !_downloads.containsKey(t.id)).length;
+
+  /// "Artist - Title.mp3", safe for every file system.
+  static String _fileName(Track t) {
+    final ext = switch (t.mime) {
+      'audio/mp4' || 'audio/x-m4a' || 'audio/m4a' || 'audio/aac' => 'm4a',
+      'audio/flac' || 'audio/x-flac' => 'flac',
+      'audio/ogg' || 'audio/opus' => 'ogg',
+      'audio/wav' || 'audio/x-wav' => 'wav',
+      _ => 'mp3',
+    };
+    final base =
+        (t.artist == 'Unknown artist' ? t.title : '${t.artist} - ${t.title}')
+            .replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1f]'), '')
+            .trim();
+    return '${base.isEmpty ? t.id.substring(3) : base.substring(0, min(base.length, 120))}.$ext';
+  }
+
+  void setAutoDownload(bool on) {
+    autoDownload = on;
+    _save();
+    notifyListeners();
+    if (on) downloadSongs(channelTracks);
+  }
+
+  /// Saves channel songs into Music/Musicly, one at a time. Songs already
+  /// there (e.g. from before a reinstall) are linked instead of downloaded.
+  Future<void> downloadSongs(List<Track> tracks) async {
+    final b = bot;
+    if (!canDownload || b == null) return;
+    final todo = tracks
+        .where(
+          (t) =>
+              t.source == TrackSource.telegram && !_downloads.containsKey(t.id),
+        )
+        .toList();
+    if (todo.isEmpty) return;
+    if (downloading) {
+      _pendingDownloads.addAll(todo);
+      return;
+    }
+    if (!await DeviceLibrary.requestPermission()) {
+      downloadError = 'Allow access to music to save songs on this phone.';
+      notifyListeners();
+      return;
+    }
+    downloading = true;
+    downloadError = null;
+    downloadDone = 0;
+    downloadTotal = todo.length;
+    notifyListeners();
+    var failed = 0;
+    for (var i = 0; i < todo.length; i++) {
+      final t = todo[i];
+      if (bot == null) break; // disconnected
+      if (_downloads.containsKey(t.id)) {
+        downloadDone++;
+        continue;
+      }
+      try {
+        final name = _fileName(t);
+        final copy =
+            await DeviceLibrary.findAudio(name, t) ??
+            await DeviceLibrary.saveAudio(
+              url: await b.fileUrl(t.uri!),
+              fileName: name,
+              like: t,
+              mime: t.mime ?? 'audio/mpeg',
+            );
+        if (copy != null) _downloads[t.id] = copy;
+      } catch (_) {
+        failed++;
+      }
+      downloadDone++;
+      if (i % 3 == 0 || i == todo.length - 1) {
+        notifyListeners();
+        await _saveDownloads();
+      }
+      if (_pendingDownloads.isNotEmpty) {
+        todo.addAll(_pendingDownloads.where((x) => !todo.contains(x)));
+        downloadTotal = todo.length;
+        _pendingDownloads.clear();
+      }
+    }
+    downloading = false;
+    if (failed > 0) {
+      downloadError =
+          '${count(failed, 'song')} couldn\'t be saved. They\'ll be retried next sync.';
+    }
+    await _save();
+    notifyListeners();
+  }
+
+  final List<Track> _pendingDownloads = [];
+
+  Future<void> _saveDownloads() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setString(
+        'downloads',
+        jsonEncode({
+          for (final e in _downloads.entries) e.key: e.value.toJson(),
+        }),
+      );
+    } catch (_) {}
+  }
+
+  static String count(int n, String word) => '$n ${n == 1 ? word : '${word}s'}';
 
   // ---- Music on the device ----------------------------------------------------
 
@@ -590,6 +773,7 @@ class LibraryController extends ChangeNotifier {
         return false;
       }
       deviceTracks = await DeviceLibrary.scan();
+      buildForYou();
       deviceScanEnabled = true;
       await _save();
       return true;
@@ -681,17 +865,16 @@ class LibraryController extends ChangeNotifier {
         jsonEncode(playlists.map((x) => x.toJson()).toList()),
       );
       await p.setString(
-        'following',
-        jsonEncode(
-          following
-              .map((a) => {'id': a.id, 'name': a.name, 'pic': a.pictureUrl})
-              .toList(),
-        ),
+        'plays',
+        jsonEncode({'tracks': _trackPlays, 'artists': _artistPlays}),
       );
       await p.setString(
-        'plays',
-        jsonEncode({'plays': _plays, 'names': _artistNames}),
+        'downloads',
+        jsonEncode({
+          for (final e in _downloads.entries) e.key: e.value.toJson(),
+        }),
       );
+      await p.setBool('autoDownload', autoDownload);
       await p.setBool('deviceScan', deviceScanEnabled);
       if (bot == null) {
         await p.remove('telegram');
@@ -721,39 +904,35 @@ class LibraryController extends ChangeNotifier {
       final p = await SharedPreferences.getInstance();
       _backupMsgId = p.getInt('backup_msg');
       lastBackup = DateTime.tryParse(p.getString('backup_at') ?? '');
-      List<Track> dec(String k) =>
-          ((jsonDecode(p.getString(k) ?? '[]')) as List)
-              .map((e) => Track.fromJson(e as Map<String, dynamic>))
-              .where((t) => t.id.contains(':'))
-              .toList();
+      lastLocalBackup = DateTime.tryParse(p.getString('local_backup_at') ?? '');
+      // Songs from sources Musicly no longer has (old previews) are dropped.
+      List<Track> dec(String k) => [
+        for (final e in (jsonDecode(p.getString(k) ?? '[]')) as List)
+          ?Track.tryFromJson(e as Map<String, dynamic>),
+      ];
       files.addAll(dec('files'));
-      // Older versions stored Audius songs; those no longer play.
-      favorites.addAll(
-        dec('favorites').where((t) => !t.id.startsWith('audius')),
-      );
-      recent.addAll(dec('recent').where((t) => !t.id.startsWith('audius')));
+      favorites.addAll(dec('favorites'));
+      recent.addAll(dec('recent'));
       playlists.addAll(
         ((jsonDecode(p.getString('playlists') ?? '[]')) as List).map(
           (e) => UserPlaylist.fromJson(e as Map<String, dynamic>),
         ),
       );
-      following.addAll(
-        ((jsonDecode(p.getString('following') ?? '[]')) as List).map(
-          (e) => Artist(
-            id: e['id'] as String,
-            name: e['name'] as String,
-            pictureUrl: e['pic'] as String?,
-          ),
-        ),
-      );
       final plays =
           jsonDecode(p.getString('plays') ?? '{}') as Map<String, dynamic>;
-      (plays['plays'] as Map? ?? {}).forEach(
-        (k, v) => _plays[k as String] = (v as num).toInt(),
+      (plays['tracks'] as Map? ?? {}).forEach(
+        (k, v) => _trackPlays[k as String] = (v as num).toInt(),
       );
-      (plays['names'] as Map? ?? {}).forEach(
-        (k, v) => _artistNames[k as String] = v as String,
+      (plays['artists'] as Map? ?? {}).forEach(
+        (k, v) => _artistPlays[k as String] = (v as num).toInt(),
       );
+      final dl =
+          jsonDecode(p.getString('downloads') ?? '{}') as Map<String, dynamic>;
+      dl.forEach((k, v) {
+        final t = Track.tryFromJson(v as Map<String, dynamic>);
+        if (t != null) _downloads[k] = t;
+      });
+      autoDownload = p.getBool('autoDownload') ?? true;
       deviceScanEnabled = p.getBool('deviceScan') ?? false;
       final tg = p.getString('telegram');
       if (tg != null) {
@@ -767,9 +946,10 @@ class LibraryController extends ChangeNotifier {
         _userChatId = (j['userChat'] as num?)?.toInt();
         _latestPostId = (j['latest'] as num?)?.toInt() ?? 0;
         tooBigSkipped = (j['tooBig'] as num?)?.toInt() ?? 0;
-        channelTracks = ((j['tracks'] as List?) ?? [])
-            .map((e) => Track.fromJson(e as Map<String, dynamic>))
-            .toList();
+        channelTracks = [
+          for (final e in (j['tracks'] as List?) ?? [])
+            ?Track.tryFromJson(e as Map<String, dynamic>),
+        ];
       }
       themeMode = p.getString('theme') == 'dark'
           ? ThemeMode.dark

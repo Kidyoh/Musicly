@@ -13,13 +13,16 @@ import 'widgets.dart';
 
 /// Live radio from around the world: near you, top stations, by genre, or search.
 class RadioScreen extends StatefulWidget {
-  const RadioScreen({super.key});
+  const RadioScreen({super.key, this.initialFilter = 'near'});
+
+  /// 'near', 'top', 'saved' or a genre tag like 'pop'.
+  final String initialFilter;
   @override
   State<RadioScreen> createState() => _RadioScreenState();
 }
 
 class _RadioScreenState extends State<RadioScreen> {
-  String _filter = 'near';
+  late String _filter = widget.initialFilter;
   String _q = '';
   Timer? _debounce;
   late Future<List<Track>> _future = _load();

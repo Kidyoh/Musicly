@@ -197,11 +197,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
                   GestureDetector(
                     onTap: widget.ownerArtistId == null
                         ? null
-                        : () => openArtist(
-                            context,
-                            widget.ownerArtistId!,
-                            widget.owner,
-                          ),
+                        : () => openArtist(context, widget.owner),
                     child: Text(
                       user != null ? 'You' : widget.owner,
                       maxLines: 1,

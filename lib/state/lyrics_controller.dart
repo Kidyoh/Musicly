@@ -21,9 +21,8 @@ class LyricsController extends ChangeNotifier {
 
   String? _trackId;
 
-  /// Previews are a 30s clip from somewhere in the song, so line timings
-  /// can't line up. Full songs on the device sync properly.
-  bool get canSync => !(_player.current?.isPreview ?? false);
+  /// Every song in Musicly is full length, so lyrics always sync.
+  bool get canSync => true;
   LyricsStatus status = LyricsStatus.idle;
   Lyrics? lyrics;
   Duration offset = Duration.zero;

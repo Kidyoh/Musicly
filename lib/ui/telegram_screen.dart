@@ -49,6 +49,36 @@ class _ChannelBanner extends StatelessWidget {
       child: child,
     );
 
+    if (lib.downloading) {
+      return card(
+        Row(
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                value: lib.downloadTotal == 0
+                    ? null
+                    : lib.downloadDone / lib.downloadTotal,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Saving songs to this phone… ${lib.downloadDone} of ${lib.downloadTotal}',
+                style: TextStyle(color: p.sub),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (lib.downloadError != null) {
+      return card(
+        Text(lib.downloadError!, style: TextStyle(color: p.sub, height: 1.4)),
+      );
+    }
     if (lib.importing) {
       return card(
         Row(
@@ -188,6 +218,24 @@ class _ChannelMenuButton extends StatelessWidget {
               subtitle: Text('Read by @${lib.botUsername ?? 'your bot'}'),
             ),
             const Divider(),
+            if (lib.canDownload)
+              StatefulBuilder(
+                builder: (ctx, setSheet) => SwitchListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+                  secondary: const Icon(AppIcons.download),
+                  title: const Text('Save songs to this phone'),
+                  subtitle: Text(
+                    lib.notDownloaded == 0
+                        ? 'All songs saved in Music/Musicly'
+                        : '${lib.notDownloaded} not saved yet · plays offline once saved',
+                  ),
+                  value: lib.autoDownload,
+                  onChanged: (v) {
+                    lib.setAutoDownload(v);
+                    setSheet(() {});
+                  },
+                ),
+              ),
             ListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 24),
               leading: const Icon(AppIcons.refresh),

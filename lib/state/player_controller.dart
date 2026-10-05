@@ -10,7 +10,6 @@ import 'package:just_audio_background/just_audio_background.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/track.dart';
-import '../services/deezer_api.dart';
 import '../services/telegram_bot.dart';
 
 /// Picked files on web live only in memory.
@@ -32,8 +31,8 @@ class _BytesSource extends StreamAudioSource {
   }
 }
 
-/// Audio whose download link is looked up only when it's needed, because the
-/// links expire (Deezer previews after ~15 min, Telegram files after an hour).
+/// Audio whose download link is looked up only when it's needed, because
+/// Telegram file links expire after about an hour.
 /// Queued and saved songs never go stale.
 class _LazySource extends StreamAudioSource {
   _LazySource(this.key, this.resolve, {super.tag});
@@ -42,11 +41,22 @@ class _LazySource extends StreamAudioSource {
 
   static final Map<String, (String, DateTime)> _cache = {};
 
-  /// Remember a link we already have (e.g. from a chart listing).
-  static void seed(String key, String url, DateTime expires) {
-    if (expires.isAfter(DateTime.now().add(const Duration(seconds: 45)))) {
-      _cache[key] = (url, expires);
+  /// Drop a cached link, e.g. after it failed.
+  static void forget(String key) => _cache.remove(key);
+
+  /// Look the link up ahead of time so the next song starts instantly.
+  static Future<void> warm(
+    String key,
+    Future<(String, DateTime)> Function() resolve,
+  ) async {
+    final hit = _cache[key];
+    if (hit != null &&
+        hit.$2.isAfter(DateTime.now().add(const Duration(minutes: 2)))) {
+      return;
     }
+    try {
+      _cache[key] = await resolve();
+    } catch (_) {}
   }
 
   Future<String> _url() async {
@@ -107,16 +117,6 @@ class _LazySource extends StreamAudioSource {
   }
 }
 
-final _expRe = RegExp(r'exp=(\d+)');
-
-/// When a signed Deezer preview link stops working.
-DateTime previewExpiry(String url) {
-  final exp = int.tryParse(_expRe.firstMatch(url)?.group(1) ?? '');
-  return exp == null
-      ? DateTime.now().add(const Duration(minutes: 10))
-      : DateTime.fromMillisecondsSinceEpoch(exp * 1000);
-}
-
 enum EqPreset {
   flat,
   bassBoost,
@@ -154,7 +154,7 @@ extension EqPresetInfo on EqPreset {
 }
 
 class PlayerController extends ChangeNotifier {
-  PlayerController(this.api) {
+  PlayerController() {
     final android = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
     equalizer = android ? AndroidEqualizer() : null;
     loudness = android ? AndroidLoudnessEnhancer() : null;
@@ -167,10 +167,12 @@ class PlayerController extends ChangeNotifier {
     _restoreSettings();
   }
 
-  final DeezerApi api;
   late final AudioPlayer player;
   late final AndroidEqualizer? equalizer;
   late final AndroidLoudnessEnhancer? loudness;
+
+  /// The downloaded phone copy of a channel song, if any (set up in main.dart).
+  Track? Function(Track t)? localCopy;
 
   /// Turns a Telegram file id into a download link (set up in main.dart).
   Future<String> Function(String fileId)? telegramUrl;
@@ -209,6 +211,10 @@ class PlayerController extends ChangeNotifier {
   Duration? get sleepRemaining => _sleepEndsAt?.difference(DateTime.now());
   bool get sleepActive => _sleepEndsAt != null || sleepAtTrackEnd;
 
+  /// Playing and not finished (just_audio keeps `playing` true at the end).
+  bool get isPlaying =>
+      player.playing && player.processingState != ProcessingState.completed;
+
   Track? get current => queue.isEmpty || currentIndex >= queue.length
       ? null
       : queue[currentIndex];
@@ -222,8 +228,12 @@ class PlayerController extends ChangeNotifier {
         player.pause();
       }
       currentIndex = i;
-      if (changed) nowOnAir = null;
+      if (changed) {
+        nowOnAir = null;
+        _retries = 0;
+      }
       if (changed && current != null) onTrackStarted?.call(current!);
+      _prefetchNext();
       notifyListeners();
     });
     player.playerStateStream.listen((_) => notifyListeners());
@@ -236,10 +246,7 @@ class PlayerController extends ChangeNotifier {
     });
     player.playbackEventStream.listen(
       null,
-      onError: (Object e, StackTrace _) {
-        playError = 'Could not play this song';
-        notifyListeners();
-      },
+      onError: (Object e, StackTrace _) => _recover(),
     );
     player.positionStream.listen(_fade);
   }
@@ -265,33 +272,31 @@ class PlayerController extends ChangeNotifier {
 
   // ---- Playback -----------------------------------------------------------
 
+  /// Key and resolver for a Telegram song's download link.
+  (String, Future<(String, DateTime)> Function()) _telegramLink(Track t) {
+    final fileId = t.uri!;
+    return (
+      'tg:$fileId',
+      () async => (
+        await telegramUrl!(fileId),
+        DateTime.now().add(const Duration(minutes: 50)),
+      ),
+    );
+  }
+
   AudioSource _sourceFor(Track t) {
-    final tag = kIsWeb ? null : _mediaItem(t);
+    // Channel songs already saved on the phone play from there, offline.
+    final copy = t.source == TrackSource.telegram ? localCopy?.call(t) : null;
+    final tag = kIsWeb ? null : _mediaItem(t, art: copy);
     if (t.bytes != null) return _BytesSource(t.bytes!, tag: tag);
+    if (copy != null) return AudioSource.uri(Uri.parse(copy.uri!), tag: tag);
     switch (t.source) {
-      case TrackSource.deezer:
-        // Browsers download every StreamAudioSource up front, so on web we hand
-        // over the (freshened) link directly; apps fetch it just in time.
-        if (kIsWeb) return AudioSource.uri(Uri.parse(t.uri!), tag: tag);
-        final id = t.deezerId!;
-        if (t.uri != null) {
-          _LazySource.seed('dz:$id', t.uri!, previewExpiry(t.uri!));
-        }
-        return _LazySource('dz:$id', () async {
-          final url = await api.previewUrl(id);
-          if (url == null) throw Exception('No preview for $id');
-          return (url, previewExpiry(url));
-        }, tag: tag);
       case TrackSource.telegram:
-        final fileId = t.uri!;
         if (kIsWeb) {
-          return AudioSource.uri(Uri.parse(_webUrls[fileId]!), tag: tag);
+          return AudioSource.uri(Uri.parse(_webUrls[t.uri!]!), tag: tag);
         }
-        return _LazySource('tg:$fileId', () async {
-          final url = await telegramUrl!(fileId);
-          return (url, DateTime.now().add(const Duration(minutes: 50)));
-        }, tag: tag);
-      case TrackSource.audius:
+        final (key, resolve) = _telegramLink(t);
+        return _LazySource(key, resolve, tag: tag);
       case TrackSource.radio:
       case TrackSource.device:
         return AudioSource.uri(Uri.parse(t.uri!), tag: tag);
@@ -302,30 +307,71 @@ class PlayerController extends ChangeNotifier {
     }
   }
 
+  /// Fetches the next song's link while this one plays.
+  void _prefetchNext() {
+    final order = player.effectiveIndices;
+    final pos = order.indexOf(currentIndex);
+    if (pos < 0 || pos + 1 >= order.length) return;
+    final next = queue[order[pos + 1]];
+    if (next.source != TrackSource.telegram ||
+        localCopy?.call(next) != null ||
+        kIsWeb) {
+      return;
+    }
+    final (key, resolve) = _telegramLink(next);
+    _LazySource.warm(key, resolve);
+  }
+
+  int _retries = 0;
+
+  /// A song that fails to load (expired link, network blip) is retried with a
+  /// fresh link; after two failures playback moves on instead of stopping.
+  Future<void> _recover() async {
+    final t = current;
+    if (t == null) return;
+    if (t.source == TrackSource.telegram) {
+      _LazySource.forget(_telegramLink(t).$1);
+    }
+    _retries++;
+    await Future.delayed(Duration(milliseconds: 600 * _retries));
+    try {
+      if (_retries <= 2) {
+        await player.seek(player.position, index: currentIndex);
+      } else if (player.hasNext) {
+        _retries = 0;
+        await player.seekToNext();
+      } else {
+        playError = 'Could not play this song';
+        notifyListeners();
+        return;
+      }
+      await player.play();
+    } catch (_) {}
+  }
+
   /// What the lock screen, notification, headphones and car show.
-  MediaItem _mediaItem(Track t) {
-    Uri? art;
+  MediaItem _mediaItem(Track t, {Track? art}) {
+    final src = art ?? t;
+    Uri? artUri;
     final extras = <String, dynamic>{if (t.isRadio) 'live': true};
-    if (t.mediaId != null) {
+    if (src.mediaId != null) {
       // Phone songs: Android reads the embedded cover straight from the file.
-      art = Uri.parse('content://media/external/audio/media/${t.mediaId}');
+      artUri = Uri.parse('content://media/external/audio/media/${src.mediaId}');
       extras['loadThumbnailUri'] = 'true';
     } else if (TelegramFiles.isThumb(t.artworkUrl)) {
       final url = TelegramFiles.cachedThumb(t.artworkUrl!);
-      if (url != null) art = Uri.parse(url);
+      if (url != null) artUri = Uri.parse(url);
     } else if (t.artworkUrl != null) {
-      art = Uri.parse(t.artworkUrl!);
+      artUri = Uri.parse(t.artworkUrl!);
     }
     return MediaItem(
       id: t.id,
       title: t.title,
       artist: t.artist,
       album: t.album,
-      duration: t.isPreview
-          ? const Duration(seconds: 30)
-          : (t.isRadio ? null : t.duration),
+      duration: t.isRadio ? null : t.duration,
       extras: extras.isEmpty ? null : extras,
-      artUri: art,
+      artUri: artUri,
     );
   }
 
@@ -342,27 +388,10 @@ class PlayerController extends ChangeNotifier {
     }
   }
 
-  /// Web only: make sure every Deezer link is valid for at least a few minutes.
+  /// Web only: browsers need real links up front for Telegram songs.
   Future<List<Track>> _fresh(List<Track> tracks) async {
     if (!kIsWeb) return tracks;
-    final soon = DateTime.now().add(const Duration(minutes: 3));
-    final out = List.of(tracks);
-    final stale = [
-      for (var i = 0; i < out.length; i++)
-        if (out[i].source == TrackSource.deezer &&
-            (out[i].uri == null || previewExpiry(out[i].uri!).isBefore(soon)))
-          i,
-    ];
-    for (var k = 0; k < stale.length; k += 8) {
-      await Future.wait(
-        stale.skip(k).take(8).map((i) async {
-          try {
-            out[i] = out[i].withUri(await api.previewUrl(out[i].deezerId!));
-          } catch (_) {}
-        }),
-      );
-    }
-    final tg = out
+    final tg = tracks
         .where((t) => t.source == TrackSource.telegram)
         .where((t) => !_webUrls.containsKey(t.uri))
         .toList();
@@ -375,8 +404,7 @@ class PlayerController extends ChangeNotifier {
         }),
       );
     }
-    return out
-        .where((t) => t.source != TrackSource.deezer || t.uri != null)
+    return tracks
         .where(
           (t) =>
               t.source != TrackSource.telegram || _webUrls.containsKey(t.uri),
@@ -400,6 +428,7 @@ class PlayerController extends ChangeNotifier {
     }
     queue = List.of(tracks);
     currentIndex = index;
+    _retries = 0;
     playError = null;
     nowOnAir = null;
     onTrackStarted?.call(queue[index]);

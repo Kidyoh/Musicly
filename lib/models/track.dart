@@ -1,8 +1,7 @@
 import 'dart:typed_data';
 
-/// deezer: 30s previews · audius: free full songs · radio: live stations ·
-/// telegram: your channel through the Musicly bridge · device/file: music on the phone.
-enum TrackSource { deezer, audius, radio, telegram, device, file }
+/// radio: live stations · telegram: your channel · device/file: music on the phone.
+enum TrackSource { radio, telegram, device, file }
 
 class Track {
   Track({
@@ -19,16 +18,17 @@ class Track {
     this.albumId,
     this.mediaId,
     this.link,
+    this.mime,
   });
 
-  /// `dz:` Deezer, `au:` Audius, `rb:` radio, `tg:` Telegram, `ms:` phone library, `file:` picked files.
+  /// `rb:` radio, `tg:` Telegram, `ms:` phone library, `file:` picked files.
   final String id;
   final String title;
   final String artist;
   final TrackSource source;
 
-  /// File path or content:// URI for local songs; for Deezer, the signed
-  /// preview link from when the song was listed (refreshed when it expires).
+  /// File path or content:// URI for phone songs, the stream link for radio,
+  /// and the Telegram file id for channel songs.
   final String? uri;
 
   /// In-memory audio for files picked on web, where no path exists.
@@ -42,31 +42,15 @@ class Track {
   /// MediaStore id, used to load embedded album art on Android.
   final int? mediaId;
 
-  /// Deezer web page for the full song.
+  /// Web page (radio station homepage).
   final String? link;
 
-  Track withUri(String? newUri) => Track(
-    id: id,
-    title: title,
-    artist: artist,
-    source: source,
-    uri: newUri,
-    bytes: bytes,
-    artworkUrl: artworkUrl,
-    duration: duration,
-    artistId: artistId,
-    album: album,
-    albumId: albumId,
-    mediaId: mediaId,
-    link: link,
-  );
+  /// File type, e.g. audio/mpeg (Telegram songs; used when saving them).
+  final String? mime;
 
-  bool get isPreview => source == TrackSource.deezer;
   bool get isLocal =>
       source == TrackSource.device || source == TrackSource.file;
   bool get isRadio => source == TrackSource.radio;
-  int? get deezerId =>
-      source == TrackSource.deezer ? int.tryParse(id.substring(3)) : null;
 
   /// Bytes-only tracks cannot be restored after a restart.
   bool get isPersistable => bytes == null;
@@ -84,13 +68,24 @@ class Track {
     'albumId': albumId,
     'mediaId': mediaId,
     'link': link,
+    'mime': mime,
   };
+
+  /// Null for songs from sources Musicly no longer has (old 30s previews).
+  static Track? tryFromJson(Map<String, dynamic> j) {
+    if (TrackSource.values.asNameMap()[j['source']] == null) return null;
+    try {
+      return Track.fromJson(j);
+    } catch (_) {
+      return null;
+    }
+  }
 
   factory Track.fromJson(Map<String, dynamic> j) => Track(
     id: j['id'] as String,
     title: j['title'] as String,
     artist: j['artist'] as String,
-    source: TrackSource.values.asNameMap()[j['source']] ?? TrackSource.file,
+    source: TrackSource.values.byName(j['source'] as String),
     uri: j['uri'] as String?,
     artworkUrl: j['artworkUrl'] as String?,
     duration: j['durationMs'] == null
@@ -101,5 +96,6 @@ class Track {
     albumId: j['albumId'] as String?,
     mediaId: (j['mediaId'] as num?)?.toInt(),
     link: j['link'] as String?,
+    mime: j['mime'] as String?,
   );
 }

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../state/library_controller.dart';
 import '../state/lyrics_controller.dart';
@@ -160,7 +159,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                                           setState(() => _lyrics = true),
                                       child: Center(
                                         child: AnimatedScale(
-                                          scale: c.player.playing ? 1 : 0.92,
+                                          scale: c.isPlaying ? 1 : 0.92,
                                           duration: const Duration(
                                             milliseconds: 400,
                                           ),
@@ -257,13 +256,10 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                                   children: [
                                     Flexible(
                                       child: GestureDetector(
-                                        onTap: t.artistId == null
+                                        onTap: t.isRadio
                                             ? null
-                                            : () => openArtist(
-                                                context,
-                                                t.artistId!,
-                                                t.artist,
-                                              ),
+                                            : () =>
+                                                  openArtist(context, t.artist),
                                         child: Text(
                                           t.isRadio
                                               ? (c.nowOnAir ?? t.artist)
@@ -277,19 +273,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                                         ),
                                       ),
                                     ),
-                                    if (t.isPreview) ...[
-                                      const SizedBox(width: 8),
-                                      GestureDetector(
-                                        onTap: t.link == null
-                                            ? null
-                                            : () => launchUrl(
-                                                Uri.parse(t.link!),
-                                                mode: LaunchMode
-                                                    .externalApplication,
-                                              ),
-                                        child: const PreviewBadge(small: false),
-                                      ),
-                                    ],
                                   ],
                                 ),
                                 const SizedBox(height: 20),
@@ -347,7 +330,9 @@ class _Controls extends StatelessWidget {
           stream: c.player.playerStateStream,
           builder: (_, snap) {
             final s = snap.data;
-            final playing = s?.playing ?? false;
+            final playing =
+                (s?.playing ?? false) &&
+                s?.processingState != ProcessingState.completed;
             final busy =
                 s?.processingState == ProcessingState.loading ||
                 s?.processingState == ProcessingState.buffering;

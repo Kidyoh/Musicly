@@ -60,9 +60,7 @@ class HomeWidgets {
 
   static String _badge(Track t) => switch (t.source) {
     TrackSource.radio => '● LIVE',
-    TrackSource.deezer => 'PREVIEW',
     TrackSource.telegram => 'TELEGRAM',
-    TrackSource.audius => 'FREE',
     TrackSource.device || TrackSource.file => 'ON THIS PHONE',
   };
 

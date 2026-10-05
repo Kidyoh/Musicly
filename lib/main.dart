@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:provider/provider.dart';
 
-import 'services/deezer_api.dart';
 import 'services/home_widgets.dart';
 import 'state/library_controller.dart';
 import 'state/lyrics_controller.dart';
@@ -21,11 +20,11 @@ Future<void> main() async {
       androidNotificationIcon: 'drawable/ic_stat_musicly',
     );
   }
-  final api = DeezerApi();
-  final library = LibraryController(api);
-  final player = PlayerController(api)
+  final library = LibraryController();
+  final player = PlayerController()
     ..onTrackStarted = library.recordPlay
-    ..telegramUrl = ((fileId) => library.bot!.fileUrl(fileId));
+    ..telegramUrl = ((fileId) => library.bot!.fileUrl(fileId))
+    ..localCopy = library.downloadedCopy;
   library.onRestored = player.reloadSettings;
   // Pending library changes are backed up when the app leaves the screen.
   AppLifecycleListener(onHide: library.flushBackup);
@@ -33,7 +32,7 @@ Future<void> main() async {
   player.addListener(
     () => HomeWidgets.update(
       player.current,
-      playing: player.player.playing,
+      playing: player.isPlaying,
       onAir: player.nowOnAir,
     ),
   );

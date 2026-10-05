@@ -111,7 +111,8 @@ class TelegramBackup {
     final prefs = (backup['prefs'] as Map).cast<String, dynamic>();
     for (final e in prefs.entries) {
       final k = e.key, v = e.value;
-      if (k == 'telegram') continue;
+      // Saved-song links are rebuilt from the files on the phone instead.
+      if (k == 'telegram' || k == 'downloads') continue;
       if (v is bool) {
         await p.setBool(k, v);
       } else if (v is int) {

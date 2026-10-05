@@ -120,6 +120,7 @@ class TelegramBot {
       artworkUrl: thumb == null ? null : 'tgthumb:${thumb['file_id']}',
       duration: Duration(seconds: (audio['duration'] as num?)?.toInt() ?? 0),
       album: channelName,
+      mime: mime.startsWith('audio/') ? mime : 'audio/mpeg',
     );
   }
 

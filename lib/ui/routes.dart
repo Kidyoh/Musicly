@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 import '../models/collection.dart';
 import '../models/track.dart';
@@ -8,39 +7,19 @@ import 'artist_screen.dart';
 import 'collection_screen.dart';
 import 'nav.dart';
 
-void openArtist(BuildContext context, String id, String name) =>
-    openPage(context, ArtistScreen(id: id, name: name));
+void openArtist(BuildContext context, String name) =>
+    openPage(context, ArtistScreen(name: name));
 
-void openCollection(BuildContext context, Collection col) {
-  final api = context.read<LibraryController>().api;
-  openPage(
-    context,
-    CollectionScreen(
-      title: col.title,
-      owner: col.owner,
-      ownerArtistId: col.kind == CollectionKind.album ? col.ownerId : null,
-      kind: col.kindLabel,
-      year: col.year,
-      cover: col.coverTrack,
-      load: () => col.kind == CollectionKind.album
-          ? api.albumTracks(col.id)
-          : api.playlistTracks(col.id),
-    ),
-  );
-}
-
+/// Album of a song on the phone.
 void openAlbumOf(BuildContext context, Track t) {
   if (t.albumId == null) return;
-  openCollection(
+  openLive(
     context,
-    Collection(
-      id: t.albumId!,
-      title: t.album ?? 'Album',
-      owner: t.artist,
-      ownerId: t.artistId,
-      kind: CollectionKind.album,
-      artworkUrl: t.artworkUrl,
-    ),
+    t.album ?? 'Album',
+    t.artist,
+    (l) => l.deviceTracks.where((x) => x.albumId == t.albumId).toList(),
+    kind: 'Album',
+    cover: t,
   );
 }
 

@@ -4,10 +4,10 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../models/collection.dart';
 import '../models/track.dart';
 import '../services/device_library.dart';
 import '../services/telegram_bot.dart';
+import '../state/library_controller.dart';
 import '../state/player_controller.dart';
 import 'icons.dart';
 import 'sheets.dart';
@@ -186,24 +186,15 @@ class Mosaic extends StatelessWidget {
   }
 }
 
+/// Round artist picture: the cover of one of their songs.
 class ArtistAvatar extends StatelessWidget {
-  const ArtistAvatar(this.artist, {super.key, this.size = 96});
-  final Artist artist;
+  const ArtistAvatar({super.key, required this.cover, this.size = 96});
+  final Track? cover;
   final double size;
 
   @override
-  Widget build(BuildContext context) => Artwork(
-    Track(
-      id: 'a:${artist.id}',
-      title: artist.name,
-      artist: '',
-      source: TrackSource.deezer,
-      artworkUrl: artist.pictureUrl,
-    ),
-    size: size,
-    radius: size / 2,
-    icon: AppIcons.artist,
-  );
+  Widget build(BuildContext context) =>
+      Artwork(cover, size: size, radius: size / 2, icon: AppIcons.artist);
 }
 
 /// Three bouncing bars shown next to the song that's playing.
@@ -406,33 +397,6 @@ class _WavePainter extends CustomPainter {
       o.progress != progress || o.bars != bars || o.active != active;
 }
 
-class PreviewBadge extends StatelessWidget {
-  const PreviewBadge({super.key, this.small = true});
-  final bool small;
-  @override
-  Widget build(BuildContext context) {
-    final p = Palette.of(context);
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: small ? 5 : 8,
-        vertical: small ? 1 : 3,
-      ),
-      decoration: BoxDecoration(
-        border: Border.all(color: p.sub.withValues(alpha: 0.6)),
-        borderRadius: BorderRadius.circular(5),
-      ),
-      child: Text(
-        small ? '30s' : 'Preview · 30s',
-        style: TextStyle(
-          fontSize: small ? 9 : 11,
-          fontWeight: FontWeight.w700,
-          color: p.sub,
-        ),
-      ),
-    );
-  }
-}
-
 /// Row used in collection lists: "01  Title / Artist • 4:21  ⋯".
 class NumberedTrackRow extends StatelessWidget {
   const NumberedTrackRow({
@@ -473,7 +437,7 @@ class NumberedTrackRow extends StatelessWidget {
               child: isCurrent
                   ? Align(
                       alignment: Alignment.centerLeft,
-                      child: EqualizerBars(playing: c.player.playing),
+                      child: EqualizerBars(playing: c.isPlaying),
                     )
                   : Text(
                       (index + 1).toString().padLeft(2, '0'),
@@ -561,7 +525,7 @@ class ArtTrackRow extends StatelessWidget {
                     ),
                     child: Center(
                       child: EqualizerBars(
-                        playing: c.player.playing,
+                        playing: c.isPlaying,
                         color: Colors.white,
                       ),
                     ),
@@ -813,16 +777,20 @@ class CoverCard extends StatelessWidget {
   );
 }
 
-/// Round artist photo with name underneath.
+/// Round artist picture with name (and song count) underneath.
 class ArtistBubble extends StatelessWidget {
   const ArtistBubble({
     super.key,
-    required this.artist,
+    required this.name,
+    required this.cover,
     required this.onTap,
+    this.subtitle,
     this.size = 96,
   });
-  final Artist artist;
+  final String name;
+  final Track? cover;
   final VoidCallback onTap;
+  final String? subtitle;
   final double size;
 
   @override
@@ -832,15 +800,22 @@ class ArtistBubble extends StatelessWidget {
       width: size,
       child: Column(
         children: [
-          ArtistAvatar(artist, size: size),
+          ArtistAvatar(cover: cover, size: size),
           const SizedBox(height: 8),
           Text(
-            artist.name,
+            name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
             style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
           ),
+          if (subtitle != null)
+            Text(
+              subtitle!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: Palette.of(context).sub, fontSize: 11),
+            ),
         ],
       ),
     ),
@@ -871,32 +846,34 @@ class HRow extends StatelessWidget {
   );
 }
 
-/// Small tag after the artist: 30s preview, FULL free song, or LIVE radio.
+/// Small tag after the artist: LIVE for radio, a tick for channel songs
+/// saved on the phone.
 class SourceBadge extends StatelessWidget {
   const SourceBadge(this.track, {super.key});
   final Track track;
 
   @override
   Widget build(BuildContext context) {
-    final p = Palette.of(context);
-    if (track.isPreview) return const PreviewBadge();
-    if (track.source != TrackSource.audius && !track.isRadio) {
-      return const SizedBox.shrink();
+    if (track.source == TrackSource.telegram) {
+      final saved = context.watch<LibraryController>().isDownloaded(track);
+      return saved
+          ? Icon(AppIcons.saved, size: 13, color: Palette.of(context).sub)
+          : const SizedBox.shrink();
     }
-    final live = track.isRadio;
+    if (!track.isRadio) return const SizedBox.shrink();
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
       decoration: BoxDecoration(
-        color: live ? const Color(0xFFE5484D) : p.ink,
+        color: const Color(0xFFE5484D),
         borderRadius: BorderRadius.circular(5),
       ),
-      child: Text(
-        live ? 'LIVE' : 'FULL',
+      child: const Text(
+        'LIVE',
         style: TextStyle(
           fontSize: 9,
           fontWeight: FontWeight.w800,
           letterSpacing: 0.4,
-          color: live ? Colors.white : p.onInk,
+          color: Colors.white,
         ),
       ),
     );
@@ -976,7 +953,7 @@ class StationCard extends StatelessWidget {
                   Positioned(
                     right: 10,
                     bottom: 10,
-                    child: EqualizerBars(playing: c.player.playing, size: 14),
+                    child: EqualizerBars(playing: c.isPlaying, size: 14),
                   ),
               ],
             ),

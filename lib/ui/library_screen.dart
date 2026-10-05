@@ -23,6 +23,130 @@ class LibraryScreen extends StatelessWidget {
     openUserPlaylist(context, lib.createPlaylist(name));
   }
 
+  String _backupSummary(LibraryController lib) {
+    final at = [lib.lastLocalBackup, lib.lastBackup]
+        .whereType<DateTime>()
+        .fold<DateTime?>(null, (a, b) => a == null || b.isAfter(a) ? b : a);
+    if (at == null) return 'Saved to this phone and Telegram automatically';
+    final m = DateTime.now().difference(at).inMinutes;
+    return 'Last saved ${m < 1
+        ? 'just now'
+        : m < 60
+        ? '$m min ago'
+        : m < 1440
+        ? '${m ~/ 60} h ago'
+        : at.toLocal().toString().substring(0, 10)}';
+  }
+
+  Future<void> _restoreFile(BuildContext context) async {
+    final err = await context.read<LibraryController>().restoreFromFile();
+    if (context.mounted) toast(context, err ?? 'Library restored');
+  }
+
+  void _backupSheet(BuildContext context) {
+    final lib = context.read<LibraryController>();
+    final p = Palette.of(context);
+    String when(DateTime? t) =>
+        t == null ? 'Not yet' : t.toLocal().toString().substring(0, 16);
+    showModalBottomSheet(
+      context: context,
+      useRootNavigator: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Backup & restore',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Musicly saves your likes, playlists, history and settings automatically: to '
+                    'Download › Musicly on this phone (kept even if you uninstall) and, once connected, '
+                    'to your Telegram bot chat.',
+                    style: TextStyle(color: p.sub, height: 1.45),
+                  ),
+                ],
+              ),
+            ),
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+              leading: const Icon(AppIcons.phone),
+              title: const Text('On this phone'),
+              subtitle: Text(
+                DeviceLibrary.supported
+                    ? 'Last saved: ${when(lib.lastLocalBackup)}'
+                    : 'Android only',
+              ),
+            ),
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+              leading: const Icon(AppIcons.telegram),
+              title: const Text('In Telegram'),
+              subtitle: Text(
+                lib.backupReady
+                    ? 'Last saved: ${when(lib.lastBackup)}'
+                    : 'Connect your channel and press Start in your bot',
+              ),
+            ),
+            const Divider(),
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+              leading: const Icon(AppIcons.backup),
+              title: const Text('Back up now'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final ok = await lib.backupNow();
+                if (context.mounted) {
+                  toast(
+                    context,
+                    ok ? 'Library backed up' : 'Backup failed. Try again.',
+                  );
+                }
+              },
+            ),
+            if (DeviceLibrary.supported)
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+                leading: const Icon(AppIcons.folder),
+                title: const Text('Restore from a backup file'),
+                subtitle: const Text(
+                  'Download › Musicly › musicly-backup.json',
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _restoreFile(context);
+                },
+              ),
+            if (lib.backupReady)
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+                leading: const Icon(AppIcons.restore),
+                title: const Text('Restore from Telegram'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final ok = await lib.restoreFromTelegram();
+                  if (context.mounted) {
+                    toast(
+                      context,
+                      ok ? 'Library restored' : 'No backup found yet.',
+                    );
+                  }
+                },
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _widgets(BuildContext context) async {
     final canPin = await HomeWidgets.canPin();
     if (!context.mounted) return;
@@ -185,6 +309,51 @@ class LibraryScreen extends StatelessWidget {
                 ],
               ),
             ),
+            if (lib.showRestoreCard && DeviceLibrary.supported)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                child: Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: p.card,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(AppIcons.restore),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Text(
+                              'Reinstalled? Restore your library',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(AppIcons.close, size: 18, color: p.sub),
+                            onPressed: lib.dismissRestore,
+                          ),
+                        ],
+                      ),
+                      Text(
+                        'Pick musicly-backup.json from Download › Musicly to bring back your likes, playlists and history.',
+                        style: TextStyle(color: p.sub, height: 1.45),
+                      ),
+                      const SizedBox(height: 12),
+                      PillButton(
+                        icon: AppIcons.folder,
+                        label: 'Choose backup file',
+                        onPressed: () => _restoreFile(context),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             tile(
               square(AppIcons.heartOn, dark: true),
               'Liked songs',
@@ -192,13 +361,6 @@ class LibraryScreen extends StatelessWidget {
               () =>
                   openLive(context, 'Liked songs', 'You', (l) => l.likedSongs),
             ),
-            if (HomeWidgets.supported)
-              tile(
-                square(AppIcons.sparkle),
-                'Home-screen widgets',
-                'Now playing and mini player',
-                () => _widgets(context),
-              ),
             tile(
               square(AppIcons.telegram),
               lib.channelConnected
@@ -237,6 +399,19 @@ class LibraryScreen extends StatelessWidget {
               () =>
                   openLive(context, 'Recently played', 'You', (l) => l.recent),
             ),
+            tile(
+              square(AppIcons.backup),
+              'Backup & restore',
+              _backupSummary(lib),
+              () => _backupSheet(context),
+            ),
+            if (HomeWidgets.supported)
+              tile(
+                square(AppIcons.sparkle),
+                'Home-screen widgets',
+                'Now playing and mini player',
+                () => _widgets(context),
+              ),
 
             // Playlists
             SectionHeader(
@@ -261,16 +436,21 @@ class LibraryScreen extends StatelessWidget {
                   () => openUserPlaylist(context, pl),
                 ),
 
-            // Following
-            if (lib.following.isNotEmpty) ...[
-              const SectionHeader('Artists you follow'),
+            // Artists from your own music
+            if (lib.artists.isNotEmpty) ...[
+              const SectionHeader('Your artists'),
               HRow(
-                height: 130,
+                height: 148,
                 children: [
-                  for (final a in lib.following)
+                  for (final (name, songs) in lib.artists.take(20))
                     ArtistBubble(
-                      artist: a,
-                      onTap: () => openArtist(context, a.id, a.name),
+                      name: name,
+                      cover: songs.firstWhere(
+                        (t) => t.artworkUrl != null || t.mediaId != null,
+                        orElse: () => songs.first,
+                      ),
+                      subtitle: count(songs.length, 'song'),
+                      onTap: () => openArtist(context, name),
                     ),
                 ],
               ),

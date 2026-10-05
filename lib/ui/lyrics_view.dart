@@ -129,12 +129,7 @@ class _LyricsViewState extends State<LyricsView> {
 
     final toolbar = Row(
       children: [
-        pill(
-          live
-              ? 'Synced'
-              : (l.canSync ? 'Not synced' : 'Preview: sync on full songs'),
-          live,
-        ),
+        pill(live ? 'Synced' : 'Not synced', live),
         const Spacer(),
         if (live) ...[
           _Nudge(

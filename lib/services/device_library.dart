@@ -39,6 +39,57 @@ class DeviceLibrary {
     }).toList();
   }
 
+  /// Saves a song into Music/Musicly (or finds the copy saved earlier).
+  /// Returns it as a phone track.
+  static Future<Track?> saveAudio({
+    required String url,
+    required String fileName,
+    required Track like,
+    String mime = 'audio/mpeg',
+  }) async {
+    if (!supported) return null;
+    final m = await _ch.invokeMapMethod<String, dynamic>('saveAudio', {
+      'url': url,
+      'name': fileName,
+      'mime': mime,
+    });
+    return m == null ? null : _copyOf(like, m);
+  }
+
+  /// A copy saved by an earlier install, so it isn't downloaded twice.
+  static Future<Track?> findAudio(String fileName, Track like) async {
+    if (!supported) return null;
+    final m = await _ch.invokeMapMethod<String, dynamic>('findAudio', {
+      'name': fileName,
+    });
+    return m == null ? null : _copyOf(like, m);
+  }
+
+  static Track _copyOf(Track t, Map<String, dynamic> m) {
+    final id = (m['id'] as num).toInt();
+    return Track(
+      id: 'ms:$id',
+      title: t.title,
+      artist: t.artist,
+      source: TrackSource.device,
+      uri: m['uri'] as String,
+      duration: t.duration,
+      album: t.album,
+      mediaId: id,
+    );
+  }
+
+  /// Writes Download/Musicly/musicly-backup.json (kept after uninstalling).
+  static Future<bool> saveBackupFile(String json) async {
+    if (!supported) return false;
+    try {
+      return await _ch.invokeMethod<bool>('saveBackup', {'json': json}) ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Embedded album art, cached for the session.
   static Future<Uint8List?> artwork(int mediaId) =>
       _art.putIfAbsent(mediaId, () async {
