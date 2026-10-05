@@ -157,6 +157,14 @@ abstract final class AppIcons {
     0xe224,
     fontFamily: 'PhosphorRegular',
   );
+  static const IconData backup = IconData(
+    0xe1ae,
+    fontFamily: 'PhosphorRegular',
+  );
+  static const IconData restore = IconData(
+    0xe1ac,
+    fontFamily: 'PhosphorRegular',
+  );
   static const IconData key = IconData(0xe2d6, fontFamily: 'PhosphorRegular');
   static const IconData headphones = IconData(
     0xe2a6,

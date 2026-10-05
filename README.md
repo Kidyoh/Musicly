@@ -26,6 +26,10 @@ A monochrome, Material 3 music player for Android, iOS and web, built with Flutt
   tap a line to jump, ±0.5s timing, manual search (previews show the lyrics unsynced)
 - **Sound**: 5-band equalizer with presets and loudness boost (Android), smooth fades between songs
 - **Hotlist**: live charts for songs, albums and artists by genre
+- **Home-screen widgets** (Android): 4×2 "Now playing" and 2×2 mini player with cover art and controls
+- **Lock screen and notification** player with cover art for every source, seek bar and controls
+- **Backup that survives reinstalls**: the library (likes, playlists, history, settings, channel songs)
+  is saved as a pinned file in your private chat with your Telegram bot and restored when you reconnect
 - Queue with drag to reorder, sleep timer with fade-out, playback speed, light and dark themes,
   background playback with lock-screen controls
 

@@ -272,7 +272,7 @@ void showAddToPlaylist(
                         p.name,
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
-                      subtitle: Text('${p.tracks.length} songs'),
+                      subtitle: Text(count(p.tracks.length, 'song')),
                       onTap: () {
                         final n = lib.addToPlaylist(p, tracks);
                         Navigator.pop(ctx);
@@ -582,7 +582,7 @@ void showQueue(BuildContext context) {
               _sheetTitle(
                 'Up next',
                 trailing: Text(
-                  '${c.queue.length} songs',
+                  count(c.queue.length, 'song'),
                   style: TextStyle(color: p.sub),
                 ),
               ),

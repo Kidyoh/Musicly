@@ -20,6 +20,9 @@ String fmt(Duration? d) {
   return '$m:$s';
 }
 
+/// "1 song", "3 songs".
+String count(int n, String word) => '$n ${n == 1 ? word : '${word}s'}';
+
 String compact(int n) {
   if (n >= 1000000) {
     return '${(n / 1000000).toStringAsFixed(n >= 10000000 ? 0 : 1)}M';

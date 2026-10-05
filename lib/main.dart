@@ -4,6 +4,7 @@ import 'package:just_audio_background/just_audio_background.dart';
 import 'package:provider/provider.dart';
 
 import 'services/deezer_api.dart';
+import 'services/home_widgets.dart';
 import 'state/library_controller.dart';
 import 'state/lyrics_controller.dart';
 import 'state/player_controller.dart';
@@ -25,6 +26,17 @@ Future<void> main() async {
   final player = PlayerController(api)
     ..onTrackStarted = library.recordPlay
     ..telegramUrl = ((fileId) => library.bot!.fileUrl(fileId));
+  library.onRestored = player.reloadSettings;
+  // Pending library changes are backed up when the app leaves the screen.
+  AppLifecycleListener(onHide: library.flushBackup);
+  // Home-screen widgets follow whatever is playing.
+  player.addListener(
+    () => HomeWidgets.update(
+      player.current,
+      playing: player.player.playing,
+      onAir: player.nowOnAir,
+    ),
+  );
   runApp(
     MultiProvider(
       providers: [

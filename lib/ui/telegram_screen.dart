@@ -70,6 +70,55 @@ class _ChannelBanner extends StatelessWidget {
         ),
       );
     }
+    if (lib.backupNote != null) {
+      return card(
+        Row(
+          children: [
+            const Icon(AppIcons.check, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                lib.backupNote!,
+                style: TextStyle(color: p.sub, height: 1.4),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (!lib.backupReady) {
+      return card(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Keep your library safe',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Open @${lib.botUsername} in Telegram and press Start. Musicly then keeps a backup of your likes, '
+              'playlists and songs there, and brings it all back if you reinstall.',
+              style: TextStyle(color: p.sub, height: 1.45),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              children: [
+                FilledButton.tonal(
+                  onPressed: () => _openBot(lib.botUsername),
+                  child: Text('Open @${lib.botUsername}'),
+                ),
+                TextButton(
+                  onPressed: lib.syncTelegram,
+                  child: const Text('I pressed Start'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
     if (lib.channelError != null) {
       return card(
         Text(
@@ -175,6 +224,44 @@ class _ChannelMenuButton extends StatelessWidget {
             ),
             ListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+              leading: const Icon(AppIcons.backup),
+              title: const Text('Back up now'),
+              subtitle: Text(_backupLabel(lib)),
+              enabled: lib.backupReady,
+              onTap: () async {
+                Navigator.pop(ctx);
+                final ok = await lib.backupNow();
+                if (context.mounted) {
+                  toast(
+                    context,
+                    ok
+                        ? 'Library backed up to Telegram'
+                        : 'Backup failed. Try again.',
+                  );
+                }
+              },
+            ),
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+              leading: const Icon(AppIcons.restore),
+              title: const Text('Restore from backup'),
+              subtitle: const Text(
+                'Replaces this phone\'s library with the saved one',
+              ),
+              enabled: lib.backupReady,
+              onTap: () async {
+                Navigator.pop(ctx);
+                final ok = await lib.restoreFromTelegram();
+                if (context.mounted) {
+                  toast(
+                    context,
+                    ok ? 'Library restored' : 'No backup found yet.',
+                  );
+                }
+              },
+            ),
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 24),
               leading: const Icon(AppIcons.close),
               title: const Text('Disconnect channel'),
               onTap: () {
@@ -188,6 +275,18 @@ class _ChannelMenuButton extends StatelessWidget {
       ),
     );
   }
+}
+
+String _backupLabel(LibraryController lib) {
+  if (!lib.backupReady) return 'Press Start in your bot first';
+  if (lib.backingUp) return 'Backing up…';
+  final at = lib.lastBackup;
+  if (at == null) return 'Not backed up yet';
+  final mins = DateTime.now().difference(at).inMinutes;
+  if (mins < 1) return 'Last backup: just now';
+  if (mins < 60) return 'Last backup: $mins min ago';
+  if (mins < 60 * 24) return 'Last backup: ${mins ~/ 60} h ago';
+  return 'Last backup: ${at.toLocal().toString().substring(0, 10)}';
 }
 
 void _openBot(String? username) {
@@ -356,6 +455,19 @@ class _ConnectViewState extends State<_ConnectView> {
             onPressed: _busy ? null : _connect,
           ),
           const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: p.card,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(
+              'Reinstalled Musicly? Connect the same bot and channel, then press Start in your bot. '
+              'Your likes, playlists and channel songs come back automatically.',
+              style: TextStyle(color: p.sub, height: 1.45),
+            ),
+          ),
+          const SizedBox(height: 16),
           Text(
             'Telegram lets bots stream files up to 20 MB, which covers normal MP3 and M4A songs. '
             'Your token is saved only on this phone.',

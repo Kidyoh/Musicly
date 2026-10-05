@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/track.dart';
 import '../services/deezer_api.dart';
+import '../services/telegram_bot.dart';
 
 /// Picked files on web live only in memory.
 class _BytesSource extends StreamAudioSource {
@@ -265,21 +266,7 @@ class PlayerController extends ChangeNotifier {
   // ---- Playback -----------------------------------------------------------
 
   AudioSource _sourceFor(Track t) {
-    final tag = kIsWeb
-        ? null
-        : MediaItem(
-            id: t.id,
-            title: t.title,
-            artist: t.artist,
-            album: t.album,
-            duration: t.isPreview
-                ? const Duration(seconds: 30)
-                : (t.isRadio ? null : t.duration),
-            extras: t.isRadio ? const {'live': true} : null,
-            artUri: t.artworkUrl == null || t.artworkUrl!.startsWith('tgthumb:')
-                ? null
-                : Uri.parse(t.artworkUrl!),
-          );
+    final tag = kIsWeb ? null : _mediaItem(t);
     if (t.bytes != null) return _BytesSource(t.bytes!, tag: tag);
     switch (t.source) {
       case TrackSource.deezer:
@@ -312,6 +299,46 @@ class PlayerController extends ChangeNotifier {
         return kIsWeb
             ? AudioSource.uri(Uri.parse(t.uri!), tag: tag)
             : AudioSource.file(t.uri!, tag: tag);
+    }
+  }
+
+  /// What the lock screen, notification, headphones and car show.
+  MediaItem _mediaItem(Track t) {
+    Uri? art;
+    final extras = <String, dynamic>{if (t.isRadio) 'live': true};
+    if (t.mediaId != null) {
+      // Phone songs: Android reads the embedded cover straight from the file.
+      art = Uri.parse('content://media/external/audio/media/${t.mediaId}');
+      extras['loadThumbnailUri'] = 'true';
+    } else if (TelegramFiles.isThumb(t.artworkUrl)) {
+      final url = TelegramFiles.cachedThumb(t.artworkUrl!);
+      if (url != null) art = Uri.parse(url);
+    } else if (t.artworkUrl != null) {
+      art = Uri.parse(t.artworkUrl!);
+    }
+    return MediaItem(
+      id: t.id,
+      title: t.title,
+      artist: t.artist,
+      album: t.album,
+      duration: t.isPreview
+          ? const Duration(seconds: 30)
+          : (t.isRadio ? null : t.duration),
+      extras: extras.isEmpty ? null : extras,
+      artUri: art,
+    );
+  }
+
+  /// Telegram covers need a link lookup before the lock screen can show them.
+  Future<void> _resolveCovers(List<Track> tracks, int from) async {
+    final refs = [
+      for (final t in tracks.skip(from).take(40))
+        if (TelegramFiles.isThumb(t.artworkUrl) &&
+            TelegramFiles.cachedThumb(t.artworkUrl!) == null)
+          t.artworkUrl!,
+    ];
+    for (var k = 0; k < refs.length; k += 8) {
+      await Future.wait(refs.skip(k).take(8).map(TelegramFiles.resolveThumb));
     }
   }
 
@@ -382,6 +409,7 @@ class PlayerController extends ChangeNotifier {
         shuffle = shuffled;
         await player.setShuffleModeEnabled(shuffle);
       }
+      await _resolveCovers(queue, index);
       await player.setAudioSources(
         queue.map(_sourceFor).toList(),
         initialIndex: index,
@@ -606,6 +634,9 @@ class PlayerController extends ChangeNotifier {
       );
     } catch (_) {}
   }
+
+  /// Re-reads sound settings, e.g. after a library restore.
+  Future<void> reloadSettings() => _restoreSettings();
 
   Future<void> _restoreSettings() async {
     try {

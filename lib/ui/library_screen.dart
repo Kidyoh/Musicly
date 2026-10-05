@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../services/device_library.dart';
+import '../services/home_widgets.dart';
 import '../state/library_controller.dart';
 import 'icons.dart';
 import 'nav.dart';
@@ -20,6 +21,67 @@ class LibraryScreen extends StatelessWidget {
     final name = await promptText(context, 'New playlist');
     if (name == null || !context.mounted) return;
     openUserPlaylist(context, lib.createPlaylist(name));
+  }
+
+  Future<void> _widgets(BuildContext context) async {
+    final canPin = await HomeWidgets.canPin();
+    if (!context.mounted) return;
+    final p = Palette.of(context);
+    showModalBottomSheet(
+      context: context,
+      useRootNavigator: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Home-screen widgets',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                canPin
+                    ? 'Pick one to place on your home screen. They show the cover and control playback without opening the app.'
+                    : 'Long-press an empty spot on your home screen, tap Widgets, and find Musicly.',
+                style: TextStyle(color: p.sub, height: 1.45),
+              ),
+              if (canPin) ...[
+                const SizedBox(height: 12),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(AppIcons.music),
+                  title: const Text(
+                    'Now playing',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: const Text('4×2 · cover, song and controls'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    HomeWidgets.pin();
+                  },
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(AppIcons.disc),
+                  title: const Text(
+                    'Mini player',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: const Text('2×2 · cover with a play button'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    HomeWidgets.pin(mini: true);
+                  },
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _scan(BuildContext context) async {
@@ -126,17 +188,24 @@ class LibraryScreen extends StatelessWidget {
             tile(
               square(AppIcons.heartOn, dark: true),
               'Liked songs',
-              '${lib.likedSongs.length} songs',
+              count(lib.likedSongs.length, 'song'),
               () =>
                   openLive(context, 'Liked songs', 'You', (l) => l.likedSongs),
             ),
+            if (HomeWidgets.supported)
+              tile(
+                square(AppIcons.sparkle),
+                'Home-screen widgets',
+                'Now playing and mini player',
+                () => _widgets(context),
+              ),
             tile(
               square(AppIcons.telegram),
               lib.channelConnected
                   ? (lib.channelName ?? 'Telegram')
                   : 'Your Telegram channel',
               lib.channelConnected
-                  ? '${lib.channelTracks.length} songs • full length'
+                  ? '${count(lib.channelTracks.length, 'song')} • full length'
                   : 'Stream songs from your own channel',
               () => openPage(context, const TelegramScreen()),
             ),
@@ -152,7 +221,7 @@ class LibraryScreen extends StatelessWidget {
               tile(
                 square(AppIcons.phone),
                 'On this phone',
-                '${lib.localTracks.length} songs • full length',
+                '${count(lib.localTracks.length, 'song')} • full length',
                 () => openLive(
                   context,
                   'On this phone',
@@ -164,7 +233,7 @@ class LibraryScreen extends StatelessWidget {
             tile(
               square(AppIcons.history),
               'Recently played',
-              '${lib.recent.length} songs',
+              count(lib.recent.length, 'song'),
               () =>
                   openLive(context, 'Recently played', 'You', (l) => l.recent),
             ),
@@ -188,7 +257,7 @@ class LibraryScreen extends StatelessWidget {
                 tile(
                   Mosaic(pl.tracks, size: 56),
                   pl.name,
-                  '${pl.tracks.length} songs',
+                  count(pl.tracks.length, 'song'),
                   () => openUserPlaylist(context, pl),
                 ),
 

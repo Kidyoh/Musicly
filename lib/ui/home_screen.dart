@@ -237,7 +237,7 @@ class HomeScreen extends StatelessWidget {
                       for (final pl in lib.topPlaylists)
                         CoverCard(
                           title: pl.title,
-                          subtitle: '${pl.trackCount ?? 0} songs',
+                          subtitle: count(pl.trackCount ?? 0, 'song'),
                           art: Artwork(pl.coverTrack, size: 148, radius: 16),
                           onTap: () => openCollection(context, pl),
                         ),

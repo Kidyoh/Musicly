@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/collection.dart';
 import '../models/track.dart';
 import '../services/audius_api.dart';
+import '../services/telegram_backup.dart';
 import '../services/telegram_bot.dart';
 import '../services/deezer_api.dart';
 import '../services/device_library.dart';
@@ -63,6 +64,18 @@ class LibraryController extends ChangeNotifier {
   Timer? _syncTimer;
   bool get channelConnected => bot != null && channelId != null;
   bool get canImport => _userChatId != null;
+
+  // Backup of the whole library in the bot chat (survives reinstalls)
+  DateTime? lastBackup;
+  bool backingUp = false;
+  String? backupNote; // e.g. "Restored 120 songs and 4 playlists"
+  int? _backupMsgId;
+  Timer? _backupTimer;
+  bool _restoreChecked = false;
+  bool get backupReady => bot != null && _userChatId != null;
+
+  /// Lets the player reload its sound settings after a restore.
+  VoidCallback? onRestored;
 
   bool deviceScanEnabled = false;
   bool scanning = false;
@@ -374,12 +387,16 @@ class LibraryController extends ChangeNotifier {
             if (id > _latestPostId) _latestPostId = id;
             _addChannelMessage(post);
           } else if (msg != null && (msg['chat'] as Map)['type'] == 'private') {
-            _userChatId = ((msg['chat'] as Map)['id'] as num).toInt();
+            _userChatId ??= ((msg['chat'] as Map)['id'] as num).toInt();
             _addChannelMessage(msg); // songs forwarded to the bot
           }
         }
       }
       await _save();
+      if (_userChatId != null && !_restoreChecked) {
+        _restoreChecked = true;
+        await restoreFromTelegram(onlyIfFresh: true);
+      }
     } on TelegramError catch (e) {
       channelError = e.code == 409
           ? 'Another app is reading this bot\'s updates. Use a bot just for Musicly.'
@@ -463,8 +480,92 @@ class LibraryController extends ChangeNotifier {
 
   void cancelImport() => _cancelImport = true;
 
+  bool get _isFresh =>
+      favorites.isEmpty &&
+      playlists.isEmpty &&
+      following.isEmpty &&
+      recent.length < 3;
+
+  void _scheduleBackup() {
+    if (!backupReady) return;
+    _backupTimer?.cancel();
+    _backupTimer = Timer(const Duration(seconds: 20), backupNow);
+  }
+
+  /// Called when the app goes to the background: save pending changes now.
+  void flushBackup() {
+    if (_backupTimer?.isActive ?? false) backupNow();
+  }
+
+  /// Saves the library to the pinned backup file in the bot chat.
+  Future<bool> backupNow() async {
+    final b = bot, chat = _userChatId;
+    if (b == null || chat == null || backingUp) return false;
+    _backupTimer?.cancel();
+    backingUp = true;
+    notifyListeners();
+    try {
+      final snap = await TelegramBackup.snapshot();
+      _backupMsgId = await TelegramBackup(
+        b,
+        chat,
+      ).upload(snap, existing: _backupMsgId);
+      lastBackup = DateTime.now();
+      final p = await SharedPreferences.getInstance();
+      await p.setInt('backup_msg', _backupMsgId!);
+      await p.setString('backup_at', lastBackup!.toIso8601String());
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      backingUp = false;
+      notifyListeners();
+    }
+  }
+
+  /// Brings back a backup from the bot chat. With [onlyIfFresh], only on a
+  /// new install, so it never overwrites a library that's in use.
+  Future<bool> restoreFromTelegram({bool onlyIfFresh = false}) async {
+    final b = bot, chat = _userChatId;
+    if (b == null || chat == null) return false;
+    if (onlyIfFresh && !_isFresh) return false;
+    try {
+      final backup = await TelegramBackup(b, chat).latest();
+      if (backup == null) return false;
+      _backupMsgId = (backup['_messageId'] as num?)?.toInt();
+      await TelegramBackup.apply(backup);
+      await _reloadFromPrefs();
+      onRestored?.call();
+      String n(int c, String w) => '$c ${c == 1 ? w : '${w}s'}';
+      backupNote =
+          'Restored ${n(favorites.length, 'liked song')}, ${n(playlists.length, 'playlist')} and ${n(channelTracks.length, 'channel song')}';
+      notifyListeners();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _reloadFromPrefs() async {
+    final keepBot = bot, keepChat = _userChatId;
+    favorites.clear();
+    recent.clear();
+    files.clear();
+    playlists.clear();
+    following.clear();
+    _plays.clear();
+    _artistNames.clear();
+    await _restore();
+    bot ??= keepBot;
+    _userChatId ??= keepChat;
+    TelegramFiles.bot = bot;
+    await _save();
+    loadHome();
+  }
+
   void disconnectTelegram() {
     _syncTimer?.cancel();
+    _backupTimer?.cancel();
     _cancelImport = true;
     bot = null;
     TelegramFiles.bot = null;
@@ -612,11 +713,14 @@ class LibraryController extends ChangeNotifier {
       }
       await p.setString('theme', themeMode.name);
     } catch (_) {}
+    _scheduleBackup();
   }
 
   Future<void> _restore() async {
     try {
       final p = await SharedPreferences.getInstance();
+      _backupMsgId = p.getInt('backup_msg');
+      lastBackup = DateTime.tryParse(p.getString('backup_at') ?? '');
       List<Track> dec(String k) =>
           ((jsonDecode(p.getString(k) ?? '[]')) as List)
               .map((e) => Track.fromJson(e as Map<String, dynamic>))
