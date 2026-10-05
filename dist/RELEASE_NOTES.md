@@ -1,6 +1,9 @@
-## Musicly 1.3.3 — Jam from anywhere
+## Musicly 1.3.4 — Jam from anywhere
 
-**Fixed in 1.3.3:** online Jams could show the song with no sound for friends, because the file hosts used to share songs didn't work on some networks. The host's phone now tries several free hosts (Litterbox, Uguu, tmpfiles), checks that the song link really works before friends get it, and remembers which host works on your network. If something still goes wrong, both screens say exactly why, with **Try again**.
+**One download for every phone.** There's now a single file, **Musicly-1.3.4.apk**, that works on all Android phones (Android 7 or newer). It installs over any earlier Musicly — nothing is lost. (Some phones said "App not installed" when the wrong one of the two older files was picked.)
+
+
+**Also fixed (1.3.3):** online Jams could show the song with no sound for friends, because the file hosts used to share songs didn't work on some networks. The host's phone now tries several free hosts (Litterbox, Uguu, tmpfiles), checks that the song link really works before friends get it, and remembers which host works on your network. If something still goes wrong, both screens say exactly why, with **Try again**.
 
 **New: online Jams.** Listen together with friends who aren't in the same room. Everyone hears the host's songs on their own phone, in step.
 
@@ -11,16 +14,14 @@
 
 **Same-room Jams** still work without internet: same Wi-Fi or the host's hotspot, and the music plays from the host's phone.
 
-Everyone needs Musicly 1.3.3. Updating? Just install over the old version — nothing is lost.
-
-**Which file do I download?**
-- **Musicly-1.3.3-arm64.apk** — almost every phone from the last 6+ years. Pick this one.
-- **Musicly-1.3.3-older-phones.apk** — only if the first one says "App not installed".
+Everyone needs Musicly 1.3.3 or newer. Updating? Just install over the old version — nothing is lost.
 
 **How to install**
-1. Tap the APK below to download it.
+1. Tap **Musicly-1.3.4.apk** below to download it.
 2. Open it. If Android asks, allow "Install unknown apps" for your browser or Files app.
 3. Tap Install.
+
+Still says "App not installed"? Your phone may have a very early test version of Musicly signed differently. Back up first (Library → Backup & restore), uninstall Musicly, then install this file and restore.
 
 **Also in Musicly**
 - Full songs from your Telegram channels (guided setup), your phone's music, and live radio

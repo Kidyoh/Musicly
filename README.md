@@ -40,7 +40,7 @@ A monochrome, Material 3 music player for Android, iOS and web, built with Flutt
 ```
 flutter pub get
 flutter run
-flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/symbols
+flutter build apk --release --target-platform android-arm64,android-arm   # one APK for every phone
 flutter build web --release --no-web-resources-cdn
 ```
 

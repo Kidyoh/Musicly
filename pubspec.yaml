@@ -16,7 +16,10 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.3.3+15
+# Musicly ships one universal APK. Keep the build number above 3000: older
+# releases were split per ABI with build numbers 1000+ and 2000+, and Android
+# refuses to install a lower one over them ("App not installed").
+version: 1.3.4+3000
 
 environment:
   sdk: ^3.13.5
