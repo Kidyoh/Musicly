@@ -72,5 +72,7 @@
 		</array>
 		<key>UIStatusBarHidden</key>
 		<false/>
-	</dict>
+		<key>NSLocalNetworkUsageDescription</key>
+	<string>Musicly finds and joins Jams on your Wi-Fi so you can listen together.</string>
+</dict>
 </plist>

@@ -363,6 +363,8 @@ class PlayerController extends ChangeNotifier {
     } else if (TelegramFiles.isThumb(t.artworkUrl)) {
       final url = TelegramFiles.cachedThumb(t.artworkUrl!);
       if (url != null) artUri = Uri.parse(url);
+    } else if (t.artworkUrl?.startsWith('/') ?? false) {
+      artUri = Uri.file(t.artworkUrl!); // a cover a Jam friend sent
     } else if (t.artworkUrl != null) {
       artUri = Uri.parse(t.artworkUrl!);
     }

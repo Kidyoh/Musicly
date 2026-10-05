@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/track.dart';
+import '../state/jam_controller.dart';
 import '../state/library_controller.dart';
 import '../state/player_controller.dart';
 import 'collection_screen.dart';
 import 'icons.dart';
+import 'jam_screen.dart';
 import 'nav.dart';
 import 'radio_screen.dart';
 import 'telegram_screen.dart';
@@ -76,6 +78,16 @@ class HomeScreen extends StatelessWidget {
                         ],
                       ),
                     ),
+                    if (JamController.supported)
+                      IconButton(
+                        tooltip: 'Jam',
+                        onPressed: () => openPage(context, const JamScreen()),
+                        icon: Icon(
+                          context.watch<JamController>().active
+                              ? AppIcons.jamOn
+                              : AppIcons.jam,
+                        ),
+                      ),
                     IconButton(
                       tooltip: 'Sound',
                       onPressed: () => showSound(context),
@@ -90,6 +102,7 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 18),
+              const _JamBanner(),
               _ForYouCard(lib: lib),
               if (songs.isEmpty) const _GetStarted(),
               if (lib.recent.isNotEmpty) ...[
@@ -370,6 +383,46 @@ class _ForYouCard extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown on Home while you're in a Jam, so it's one tap away.
+class _JamBanner extends StatelessWidget {
+  const _JamBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final jam = context.watch<JamController>();
+    if (!jam.active) return const SizedBox.shrink();
+    final p = Palette.of(context);
+    final people = jam.role == JamRole.host
+        ? jam.guests.length + 1
+        : jam.state.people.length;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+      child: Material(
+        color: p.card,
+        borderRadius: BorderRadius.circular(18),
+        child: ListTile(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          leading: CircleAvatar(
+            backgroundColor: p.ink,
+            child: Icon(AppIcons.jamOn, color: p.onInk, size: 20),
+          ),
+          title: Text(
+            jam.jamName,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          subtitle: Text(
+            '${jam.role == JamRole.host ? 'You\'re hosting' : 'You\'re in'} · ${count(people, 'person', 'people')}',
+          ),
+          trailing: const Icon(AppIcons.chevron, size: 18),
+          onTap: () => openPage(context, const JamScreen()),
         ),
       ),
     );

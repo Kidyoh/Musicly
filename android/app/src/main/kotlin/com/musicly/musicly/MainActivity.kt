@@ -71,6 +71,33 @@ class MainActivity : AudioServiceActivity() {
         manager.createNotificationChannel(channel)
     }
 
+    private var multicast: android.net.wifi.WifiManager.MulticastLock? = null
+
+    // Some phones drop Wi-Fi broadcasts unless an app asks for them; Jam
+    // beacons need them while someone is looking for a Jam.
+    private fun setMulticast(on: Boolean) {
+        if (on) {
+            if (multicast == null) {
+                val wifi = applicationContext.getSystemService(WIFI_SERVICE) as android.net.wifi.WifiManager
+                multicast = wifi.createMulticastLock("musicly-jam").apply { setReferenceCounted(false) }
+            }
+            multicast?.acquire()
+        } else {
+            multicast?.let { if (it.isHeld) it.release() }
+        }
+    }
+
+    // A phone song as a plain file, so it can be sent to a Jam host.
+    private fun copyToCache(uri: String, name: String): String {
+        val dir = File(cacheDir, "jam-send").apply { mkdirs() }
+        dir.listFiles()?.forEach { it.delete() }
+        val out = File(dir, name.replace(Regex("[^\\w. -]"), "_"))
+        contentResolver.openInputStream(Uri.parse(uri))!!.use { input ->
+            FileOutputStream(out).use { input.copyTo(it) }
+        }
+        return out.absolutePath
+    }
+
     private fun openNotificationSettings(): Boolean {
         val intent = if (Build.VERSION.SDK_INT >= 26) {
             Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
@@ -91,6 +118,18 @@ class MainActivity : AudioServiceActivity() {
                     "requestPermission" -> requestAudioPermission(result)
                     "requestNotifications" -> requestNotificationPermission(result)
                     "openNotificationSettings" -> result.success(openNotificationSettings())
+                    "multicastLock" -> {
+                        setMulticast(call.argument<Boolean>("on") == true)
+                        result.success(true)
+                    }
+                    "copyToCache" -> {
+                        val uri = call.argument<String>("uri")!!
+                        val name = call.argument<String>("name")!!
+                        io.execute {
+                            val path = try { copyToCache(uri, name) } catch (e: Exception) { null }
+                            main.post { result.success(path) }
+                        }
+                    }
                     "scan" -> io.execute {
                         val songs = try { scan() } catch (e: Exception) { null }
                         main.post {

@@ -4,6 +4,7 @@ import 'package:just_audio_background/just_audio_background.dart';
 import 'package:provider/provider.dart';
 
 import 'services/home_widgets.dart';
+import 'state/jam_controller.dart';
 import 'state/library_controller.dart';
 import 'state/lyrics_controller.dart';
 import 'state/player_controller.dart';
@@ -48,6 +49,7 @@ Future<void> main() async {
         ChangeNotifierProvider.value(value: library),
         ChangeNotifierProvider.value(value: player),
         ChangeNotifierProvider(create: (_) => LyricsController(player)),
+        ChangeNotifierProvider(create: (_) => JamController(library, player)),
       ],
       child: const MusiclyApp(),
     ),

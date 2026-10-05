@@ -35,6 +35,28 @@ class DeviceLibrary {
     } catch (_) {}
   }
 
+  /// Lets Jam beacons through on phones that filter Wi-Fi broadcasts.
+  static Future<void> multicastLock(bool on) async {
+    if (!supported) return;
+    try {
+      await _ch.invokeMethod('multicastLock', {'on': on});
+    } catch (_) {}
+  }
+
+  /// Copies a phone song (content:// link) to a temporary file; null if it
+  /// can't be read.
+  static Future<String?> copyToCache(String uri, String name) async {
+    if (!supported) return null;
+    try {
+      return await _ch.invokeMethod<String>('copyToCache', {
+        'uri': uri,
+        'name': name,
+      });
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<List<Track>> scan() async {
     if (!supported) return [];
     final raw = await _ch.invokeListMethod<Map>('scan') ?? [];

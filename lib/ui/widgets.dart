@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -21,7 +23,8 @@ String fmt(Duration? d) {
 }
 
 /// "1 song", "3 songs".
-String count(int n, String word) => '$n ${n == 1 ? word : '${word}s'}';
+String count(int n, String word, [String? plural]) =>
+    '$n ${n == 1 ? word : plural ?? '${word}s'}';
 
 String compact(int n) {
   if (n >= 1000000) {
@@ -104,6 +107,15 @@ class Artwork extends StatelessWidget {
         future: TelegramFiles.resolveThumb(t!.artworkUrl!),
         builder: (_, snap) =>
             snap.data == null ? placeholder : network(snap.data!),
+      );
+    } else if (t?.artworkUrl?.startsWith('/') ?? false) {
+      image = Image.file(
+        File(t!.artworkUrl!),
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+        errorBuilder: (_, _, _) => placeholder,
       );
     } else if (t?.artworkUrl != null) {
       image = network(t!.artworkUrl!);

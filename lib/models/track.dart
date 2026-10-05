@@ -53,7 +53,10 @@ class Track {
   bool get isRadio => source == TrackSource.radio;
 
   /// Bytes-only tracks cannot be restored after a restart.
-  bool get isPersistable => bytes == null;
+  /// Songs that only exist during a Jam (sent by a friend, or shown from
+  /// the host) are never saved into the library.
+  bool get isJam => id.startsWith('jam:') || id.startsWith('jamview:');
+  bool get isPersistable => bytes == null && !isJam;
 
   Map<String, dynamic> toJson() => {
     'id': id,

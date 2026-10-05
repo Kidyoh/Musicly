@@ -5,6 +5,21 @@ import 'package:flutter/widgets.dart';
 abstract final class AppIcons {
   static const IconData bell = IconData(0xe0ce, fontFamily: 'PhosphorRegular');
 
+  // Jam
+  static const IconData jam = IconData(0xe68e, fontFamily: 'PhosphorRegular');
+  static const IconData jamOn = IconData(0xe68e, fontFamily: 'PhosphorFill');
+  static const IconData broadcast = IconData(
+    0xe0f2,
+    fontFamily: 'PhosphorRegular',
+  );
+  static const IconData crown = IconData(0xe614, fontFamily: 'PhosphorFill');
+  static const IconData upload = IconData(
+    0xe4c0,
+    fontFamily: 'PhosphorRegular',
+  );
+  static const IconData leave = IconData(0xe42a, fontFamily: 'PhosphorRegular');
+  static const IconData wifi = IconData(0xe4ea, fontFamily: 'PhosphorRegular');
+
   // Navigation
   static const IconData home = IconData(0xe2c2, fontFamily: 'PhosphorRegular');
   static const IconData homeOn = IconData(0xe2c2, fontFamily: 'PhosphorFill');

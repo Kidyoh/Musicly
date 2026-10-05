@@ -16,6 +16,9 @@ A monochrome, Material 3 music player for Android, iOS and web, built with Flutt
 
 ## Features
 
+- **Jam**: listen together in the same room. One phone hosts and plays; friends on the same Wi-Fi
+  (or the host's hotspot) join from Musicly, see what's playing and add songs from the host's
+  library or their own phone. The host can let friends control playback.
 - **Your mix**: a fresh blend of your channel and phone songs, weighted toward what you like and play
 - **Hotlist**: your most played songs, and the most popular radio stations
 - **Artist pages** built from your own music; **your playlists** with drag to reorder
