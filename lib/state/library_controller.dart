@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/collection.dart';
 import '../models/track.dart';
 import '../services/audius_api.dart';
+import '../services/telegram_bot.dart';
 import '../services/deezer_api.dart';
 import '../services/device_library.dart';
 import '../services/radio_api.dart';
@@ -20,6 +21,7 @@ class LibraryController extends ChangeNotifier {
   LibraryController(this.api) {
     _restore().then((_) {
       loadHome();
+      if (channelConnected) _startSync();
       if (deviceScanEnabled) scanDevice(askPermission: false);
     });
   }
@@ -40,6 +42,27 @@ class LibraryController extends ChangeNotifier {
   /// Plays per Deezer artist id, with the name kept for display.
   final Map<String, int> _plays = {};
   final Map<String, String> _artistNames = {};
+
+  // Telegram channel, read directly with the Bot API (no server)
+  TelegramBot? bot;
+  String? botUsername;
+  int? channelId;
+  String? channelName;
+  List<Track> channelTracks = [];
+  bool channelLoading = false;
+  String? channelError;
+  int _updateOffset = 0;
+  int?
+  _userChatId; // the user's private chat with the bot, for importing history
+  int _latestPostId = 0;
+  int tooBigSkipped = 0;
+  bool importing = false;
+  int importScanned = 0;
+  int importFound = 0;
+  bool _cancelImport = false;
+  Timer? _syncTimer;
+  bool get channelConnected => bot != null && channelId != null;
+  bool get canImport => _userChatId != null;
 
   bool deviceScanEnabled = false;
   bool scanning = false;
@@ -275,6 +298,183 @@ class LibraryController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---- Telegram channel --------------------------------------------------------
+
+  /// Checks the bot and channel. Returns an error message, or null when connected.
+  Future<String?> connectTelegram(String token, String channel) async {
+    final b = TelegramBot(token.trim());
+    try {
+      final me = await b.getMe();
+      final chat = await b.getChat(channel);
+      final id = (chat['id'] as num).toInt();
+      try {
+        final member = await b.call('getChatMember', {
+          'chat_id': id,
+          'user_id': me['id'],
+        }) as Map;
+        if (member['status'] != 'administrator' &&
+            member['status'] != 'creator') {
+          return 'Add @${me['username']} to the channel as an admin first.';
+        }
+      } on TelegramError {
+        return 'Add @${me['username']} to the channel as an admin first.';
+      }
+      bot = b;
+      TelegramFiles.bot = b;
+      botUsername = me['username'] as String?;
+      channelId = id;
+      channelName = (chat['title'] as String?) ?? channel;
+      channelTracks = [];
+      _updateOffset = 0;
+      _latestPostId = 0;
+      tooBigSkipped = 0;
+      await _save();
+      _startSync();
+      return null;
+    } on TelegramError catch (e) {
+      if (e.code == 401 || e.code == 404) {
+        return 'That bot token isn\'t valid. Copy it again from @BotFather.';
+      }
+      if (e.description.contains('chat not found')) {
+        return 'Channel not found. Use its @username, or add the bot to the private channel first.';
+      }
+      return e.description;
+    } catch (_) {
+      return 'Could not reach Telegram. Check your connection.';
+    }
+  }
+
+  void _startSync() {
+    TelegramFiles.bot = bot;
+    _syncTimer?.cancel();
+    _syncTimer = Timer.periodic(
+      const Duration(minutes: 2),
+      (_) => syncTelegram(),
+    );
+    syncTelegram();
+  }
+
+  /// Picks up new channel posts and songs forwarded to the bot.
+  Future<void> syncTelegram() async {
+    final b = bot;
+    if (b == null || channelLoading) return;
+    channelLoading = true;
+    channelError = null;
+    notifyListeners();
+    try {
+      while (true) {
+        final updates = await b.getUpdates(_updateOffset);
+        if (updates.isEmpty) break;
+        for (final u in updates) {
+          _updateOffset = (u['update_id'] as num).toInt() + 1;
+          final post = (u['channel_post'] ?? u['edited_channel_post']) as Map?;
+          final msg = u['message'] as Map?;
+          if (post != null && (post['chat'] as Map)['id'] == channelId) {
+            final id = (post['message_id'] as num).toInt();
+            if (id > _latestPostId) _latestPostId = id;
+            _addChannelMessage(post);
+          } else if (msg != null && (msg['chat'] as Map)['type'] == 'private') {
+            _userChatId = ((msg['chat'] as Map)['id'] as num).toInt();
+            _addChannelMessage(msg); // songs forwarded to the bot
+          }
+        }
+      }
+      await _save();
+    } on TelegramError catch (e) {
+      channelError = e.code == 409
+          ? 'Another app is reading this bot\'s updates. Use a bot just for Musicly.'
+          : 'Telegram: ${e.description}';
+    } catch (_) {
+      channelError = 'Could not reach Telegram. Pull down to retry.';
+    }
+    channelLoading = false;
+    notifyListeners();
+  }
+
+  /// Returns true if it was a new song.
+  bool _addChannelMessage(Map m) {
+    final t = TelegramBot.trackFrom(m, channelName ?? 'Telegram');
+    if (t == null) {
+      if (TelegramBot.isTooBig(m)) tooBigSkipped++;
+      return false;
+    }
+    final i = channelTracks.indexWhere((x) => x.id == t.id);
+    if (i >= 0) {
+      channelTracks[i] = t;
+      return false;
+    }
+    channelTracks.insert(0, t);
+    return true;
+  }
+
+  /// Bots can't list a channel's history, so each older post is briefly
+  /// forwarded to the user's private chat with the bot (silently), read, and
+  /// deleted again.
+  Future<void> importTelegramHistory() async {
+    final b = bot;
+    final to = _userChatId;
+    if (b == null || to == null || importing) return;
+    importing = true;
+    _cancelImport = false;
+    importScanned = 0;
+    importFound = 0;
+    notifyListeners();
+    var misses = 0;
+    // Without a known latest post, stop after a long run of missing ids.
+    final last = _latestPostId;
+    var id = 1;
+    while (!_cancelImport) {
+      if (last > 0 && id > last) break;
+      if (last == 0 && misses >= 150) break;
+      try {
+        final fwd = await b.call('forwardMessage', {
+          'chat_id': to,
+          'from_chat_id': channelId,
+          'message_id': id,
+          'disable_notification': true,
+        }) as Map;
+        misses = 0;
+        if (_addChannelMessage(fwd)) importFound++;
+        try {
+          await b.call('deleteMessage', {
+            'chat_id': to,
+            'message_id': fwd['message_id'],
+          });
+        } catch (_) {}
+        await Future.delayed(const Duration(milliseconds: 350));
+      } on TelegramError catch (e) {
+        if (e.retryAfter != null) {
+          await Future.delayed(Duration(seconds: e.retryAfter! + 1));
+          continue; // same post again
+        }
+        misses++; // deleted post or a service message
+      } catch (_) {
+        await Future.delayed(const Duration(seconds: 2));
+        continue;
+      }
+      importScanned = id;
+      if (id % 10 == 0) notifyListeners();
+      id++;
+    }
+    importing = false;
+    await _save();
+    notifyListeners();
+  }
+
+  void cancelImport() => _cancelImport = true;
+
+  void disconnectTelegram() {
+    _syncTimer?.cancel();
+    _cancelImport = true;
+    bot = null;
+    TelegramFiles.bot = null;
+    channelId = null;
+    channelName = null;
+    channelTracks = [];
+    _save();
+    notifyListeners();
+  }
+
   // ---- Music on the device ----------------------------------------------------
 
   Future<bool> scanDevice({bool askPermission = true}) async {
@@ -392,6 +592,24 @@ class LibraryController extends ChangeNotifier {
         jsonEncode({'plays': _plays, 'names': _artistNames}),
       );
       await p.setBool('deviceScan', deviceScanEnabled);
+      if (bot == null) {
+        await p.remove('telegram');
+      } else {
+        await p.setString(
+          'telegram',
+          jsonEncode({
+            'token': bot!.token,
+            'bot': botUsername,
+            'channelId': channelId,
+            'name': channelName,
+            'offset': _updateOffset,
+            'userChat': _userChatId,
+            'latest': _latestPostId,
+            'tooBig': tooBigSkipped,
+            'tracks': channelTracks.map((t) => t.toJson()).toList(),
+          }),
+        );
+      }
       await p.setString('theme', themeMode.name);
     } catch (_) {}
   }
@@ -433,6 +651,22 @@ class LibraryController extends ChangeNotifier {
         (k, v) => _artistNames[k as String] = v as String,
       );
       deviceScanEnabled = p.getBool('deviceScan') ?? false;
+      final tg = p.getString('telegram');
+      if (tg != null) {
+        final j = jsonDecode(tg) as Map<String, dynamic>;
+        bot = TelegramBot(j['token'] as String);
+        TelegramFiles.bot = bot;
+        botUsername = j['bot'] as String?;
+        channelId = (j['channelId'] as num?)?.toInt();
+        channelName = j['name'] as String?;
+        _updateOffset = (j['offset'] as num?)?.toInt() ?? 0;
+        _userChatId = (j['userChat'] as num?)?.toInt();
+        _latestPostId = (j['latest'] as num?)?.toInt() ?? 0;
+        tooBigSkipped = (j['tooBig'] as num?)?.toInt() ?? 0;
+        channelTracks = ((j['tracks'] as List?) ?? [])
+            .map((e) => Track.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
       themeMode = p.getString('theme') == 'dark'
           ? ThemeMode.dark
           : ThemeMode.light;

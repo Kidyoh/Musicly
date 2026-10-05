@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../models/collection.dart';
 import '../models/track.dart';
 import '../services/device_library.dart';
+import '../services/telegram_bot.dart';
 import '../state/player_controller.dart';
 import 'icons.dart';
 import 'sheets.dart';
@@ -29,6 +30,10 @@ String compact(int n) {
 
 /// Image provider for a track's cover, from the web or the phone's library.
 Future<ImageProvider?> artworkProvider(Track t) async {
+  if (TelegramFiles.isThumb(t.artworkUrl)) {
+    final url = await TelegramFiles.resolveThumb(t.artworkUrl!);
+    return url == null ? null : NetworkImage(url);
+  }
   if (t.artworkUrl != null) return NetworkImage(t.artworkUrl!);
   if (t.mediaId != null) {
     final b = await DeviceLibrary.artwork(t.mediaId!);
@@ -73,20 +78,32 @@ class Artwork extends StatelessWidget {
       ),
     );
 
+    Widget network(String url) => Image.network(
+      url,
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
+      gaplessPlayback: true,
+      webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
+      frameBuilder: (_, child, frame, sync) =>
+          sync || frame != null ? child : placeholder,
+      errorBuilder: (_, _, _) => placeholder,
+    );
+
     Widget image;
     final t = track;
-    if (t?.artworkUrl != null) {
-      image = Image.network(
-        t!.artworkUrl!,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        gaplessPlayback: true,
-        webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
-        frameBuilder: (_, child, frame, sync) =>
-            sync || frame != null ? child : placeholder,
-        errorBuilder: (_, _, _) => placeholder,
+    if (TelegramFiles.isThumb(t?.artworkUrl) &&
+        TelegramFiles.cachedThumb(t!.artworkUrl!) != null) {
+      image = network(TelegramFiles.cachedThumb(t.artworkUrl!)!);
+    } else if (TelegramFiles.isThumb(t?.artworkUrl)) {
+      // Telegram covers need a link lookup first.
+      image = FutureBuilder<String?>(
+        future: TelegramFiles.resolveThumb(t!.artworkUrl!),
+        builder: (_, snap) =>
+            snap.data == null ? placeholder : network(snap.data!),
       );
+    } else if (t?.artworkUrl != null) {
+      image = network(t!.artworkUrl!);
     } else if (t?.mediaId != null) {
       image = FutureBuilder<Uint8List?>(
         future: DeviceLibrary.artwork(t!.mediaId!),

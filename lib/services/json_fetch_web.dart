@@ -25,7 +25,8 @@ Future<dynamic> fetchJson(Uri uri, {bool jsonp = false}) async {
 
   void cleanup() {
     script.remove();
-    globalContext.delete(name.toJS);
+    // Leave a no-op behind: a reply that arrives after a timeout must not throw.
+    globalContext.setProperty(name.toJS, ((JSAny? _) {}).toJS);
   }
 
   globalContext.setProperty(

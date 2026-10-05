@@ -7,6 +7,9 @@ A monochrome, Material 3 music player for Android, iOS and web, built with Flutt
 - **Live radio** ([Radio Browser](https://www.radio-browser.info)): tens of thousands of real
   stations worldwide, full songs as they're broadcast, "near you" by phone region, genres and search.
 - **Free full songs** ([Audius](https://audius.co)): full-length tracks from independent artists.
+- **Your Telegram channel**: full songs posted in your own channel, read straight from Telegram with
+  a bot token you paste in the app (no server). New posts appear automatically; "Import older songs"
+  reads the channel's history; you can also forward songs to the bot. Bots can stream files up to 20 MB.
 - **Deezer catalog**: real worldwide and genre charts, artists, albums and playlists with
   free 30-second previews (no account or API key). "Play full song on Deezer" opens the full track.
 - **Your phone's music** (Android): one tap scans the phone's library and plays full songs with

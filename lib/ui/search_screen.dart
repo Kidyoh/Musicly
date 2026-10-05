@@ -120,7 +120,7 @@ class _SearchScreenState extends State<SearchScreen> {
     final q = _q.trim().toLowerCase();
     final local = q.isEmpty
         ? <Track>[]
-        : lib.localTracks
+        : [...lib.channelTracks, ...lib.localTracks]
               .where(
                 (t) =>
                     t.title.toLowerCase().contains(q) ||
@@ -254,7 +254,10 @@ class _SearchScreenState extends State<SearchScreen> {
                           ),
                         ],
                         if (local.isNotEmpty) ...[
-                          const SectionHeader('On this phone'),
+                          const SectionHeader(
+                            'Your music',
+                            subtitle: 'Channel and phone',
+                          ),
                           for (var i = 0; i < local.length; i++)
                             ArtTrackRow(
                               track: local[i],

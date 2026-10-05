@@ -6,6 +6,7 @@ import '../state/library_controller.dart';
 import 'icons.dart';
 import 'nav.dart';
 import 'radio_screen.dart';
+import 'telegram_screen.dart';
 import 'routes.dart';
 import 'sheets.dart';
 import 'theme.dart';
@@ -128,6 +129,16 @@ class LibraryScreen extends StatelessWidget {
               '${lib.likedSongs.length} songs',
               () =>
                   openLive(context, 'Liked songs', 'You', (l) => l.likedSongs),
+            ),
+            tile(
+              square(AppIcons.telegram),
+              lib.channelConnected
+                  ? (lib.channelName ?? 'Telegram')
+                  : 'Your Telegram channel',
+              lib.channelConnected
+                  ? '${lib.channelTracks.length} songs • full length'
+                  : 'Stream songs from your own channel',
+              () => openPage(context, const TelegramScreen()),
             ),
             tile(
               square(AppIcons.radio),

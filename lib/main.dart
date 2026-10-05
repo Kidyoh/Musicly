@@ -22,7 +22,9 @@ Future<void> main() async {
   }
   final api = DeezerApi();
   final library = LibraryController(api);
-  final player = PlayerController(api)..onTrackStarted = library.recordPlay;
+  final player = PlayerController(api)
+    ..onTrackStarted = library.recordPlay
+    ..telegramUrl = ((fileId) => library.bot!.fileUrl(fileId));
   runApp(
     MultiProvider(
       providers: [

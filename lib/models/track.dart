@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
 /// deezer: 30s previews · audius: free full songs · radio: live stations ·
-/// device/file: music on the phone.
-enum TrackSource { deezer, audius, radio, device, file }
+/// telegram: your channel through the Musicly bridge · device/file: music on the phone.
+enum TrackSource { deezer, audius, radio, telegram, device, file }
 
 class Track {
   Track({
@@ -21,7 +21,7 @@ class Track {
     this.link,
   });
 
-  /// `dz:` Deezer, `au:` Audius, `rb:` radio, `ms:` phone library, `file:` picked files.
+  /// `dz:` Deezer, `au:` Audius, `rb:` radio, `tg:` Telegram, `ms:` phone library, `file:` picked files.
   final String id;
   final String title;
   final String artist;

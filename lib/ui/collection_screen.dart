@@ -25,6 +25,9 @@ class CollectionScreen extends StatefulWidget {
     this.load,
     this.live,
     this.removableFiles = false,
+    this.actions = const [],
+    this.onRefresh,
+    this.banner,
   }) : playlistId = null;
 
   /// A playlist the user made: editable, reorderable.
@@ -37,7 +40,10 @@ class CollectionScreen extends StatefulWidget {
       cover = null,
       load = null,
       live = null,
-      removableFiles = false;
+      removableFiles = false,
+      actions = const [],
+      onRefresh = null,
+      banner = null;
 
   final String title;
   final String owner;
@@ -49,6 +55,15 @@ class CollectionScreen extends StatefulWidget {
   final List<Track> Function(LibraryController c)? live;
   final bool removableFiles;
   final String? playlistId;
+
+  /// Extra app-bar buttons, e.g. channel settings.
+  final List<Widget> actions;
+
+  /// Enables pull-to-refresh.
+  final Future<void> Function()? onRefresh;
+
+  /// Shown between the Play/Shuffle buttons and the songs.
+  final Widget? banner;
 
   @override
   State<CollectionScreen> createState() => _CollectionScreenState();
@@ -140,7 +155,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
     final title = user?.name ?? widget.title;
     final meta = [
       widget.kind,
-      if (!loading) '${all.length} songs',
+      if (!loading) '${all.length} ${all.length == 1 ? 'song' : 'songs'}',
       if (widget.year != null) '${widget.year}',
     ].join(' • ');
     final canReorder =
@@ -375,6 +390,16 @@ class _CollectionScreenState extends State<CollectionScreen> {
       );
     }
 
+    final scroll = CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        SliverList.list(children: header),
+        if (widget.banner != null) SliverToBoxAdapter(child: widget.banner),
+        list,
+        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+      ],
+    );
+
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -403,15 +428,12 @@ class _CollectionScreenState extends State<CollectionScreen> {
               _q = '';
             }),
           ),
+          ...widget.actions,
         ],
       ),
-      body: CustomScrollView(
-        slivers: [
-          SliverList.list(children: header),
-          list,
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
-        ],
-      ),
+      body: widget.onRefresh == null
+          ? scroll
+          : RefreshIndicator(onRefresh: widget.onRefresh!, child: scroll),
     );
   }
 

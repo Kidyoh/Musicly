@@ -135,6 +135,29 @@ abstract final class AppIcons {
     0xe802,
     fontFamily: 'PhosphorRegular',
   );
+  static const IconData telegram = IconData(
+    0xe5bc,
+    fontFamily: 'PhosphorRegular',
+  );
+  static const IconData telegramOn = IconData(
+    0xe5bc,
+    fontFamily: 'PhosphorFill',
+  );
+  static const IconData connected = IconData(
+    0xeb5a,
+    fontFamily: 'PhosphorRegular',
+  );
+  static const IconData refresh = IconData(
+    0xe094,
+    fontFamily: 'PhosphorRegular',
+  );
+  static const IconData link = IconData(0xe2e2, fontFamily: 'PhosphorRegular');
+  static const IconData eye = IconData(0xe220, fontFamily: 'PhosphorRegular');
+  static const IconData eyeOff = IconData(
+    0xe224,
+    fontFamily: 'PhosphorRegular',
+  );
+  static const IconData key = IconData(0xe2d6, fontFamily: 'PhosphorRegular');
   static const IconData headphones = IconData(
     0xe2a6,
     fontFamily: 'PhosphorRegular',

@@ -8,6 +8,7 @@ import 'collection_screen.dart';
 import 'icons.dart';
 import 'nav.dart';
 import 'radio_screen.dart';
+import 'telegram_screen.dart';
 import 'routes.dart';
 import 'sheets.dart';
 import 'theme.dart';
@@ -150,6 +151,19 @@ class HomeScreen extends StatelessWidget {
                       ),
                     ),
                   ),
+                if (lib.channelTracks.isNotEmpty) ...[
+                  SectionHeader(
+                    lib.channelName ?? 'Your channel',
+                    subtitle: 'From your Telegram channel',
+                    action: 'See all',
+                    onAction: () => openPage(context, const TelegramScreen()),
+                  ),
+                  for (var i = 0; i < lib.channelTracks.length.clamp(0, 5); i++)
+                    ArtTrackRow(
+                      track: lib.channelTracks[i],
+                      onTap: () => c.playQueue(lib.channelTracks, i),
+                    ),
+                ],
                 if (lib.stations.isNotEmpty) ...[
                   SectionHeader(
                     'Live radio',
