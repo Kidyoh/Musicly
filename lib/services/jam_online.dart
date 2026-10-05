@@ -133,10 +133,14 @@ abstract final class FileDrop {
 
   /// Uploads [bytes] (or the file at [file]); returns the link and how long
   /// it lasts.
+  ///
+  /// With [verify], the start of the uploaded file is fetched back to make
+  /// sure the link really serves it, before anyone is given the link.
   static Future<(String, Duration)> upload({
     File? file,
     List<int>? bytes,
     required String name,
+    bool verify = false,
     void Function(double done)? onProgress,
   }) async {
     final problems = <String>[];
@@ -151,15 +155,16 @@ abstract final class FileDrop {
         onProgress,
       );
       final link = url.trim();
-      if (!isLink(link)) throw JamError('unexpected reply');
+      if (!isLink(link)) throw const JamError('unexpected reply');
+      if (verify) await check(link);
       return (link, const Duration(hours: 12));
     } catch (e) {
-      problems.add('Litterbox: $e');
+      problems.add('Litterbox: ${describe(e)}');
     }
     try {
       final body = await _post(
         fallback,
-        const {},
+        const {'expire': '43200'}, // 12 hours
         'file',
         file,
         bytes,
@@ -169,12 +174,69 @@ abstract final class FileDrop {
       final page = ((jsonDecode(body) as Map)['data'] as Map)['url'] as String;
       // The page link shows a download page; /dl/ is the file itself.
       final u = Uri.parse(page);
-      final link = u.replace(pathSegments: ['dl', ...u.pathSegments]);
-      return (link.toString(), const Duration(minutes: 60));
+      final link = u
+          .replace(
+            scheme: u.scheme == 'http' && u.host == 'tmpfiles.org'
+                ? 'https'
+                : u.scheme,
+            pathSegments: ['dl', ...u.pathSegments],
+          )
+          .toString();
+      if (verify) await check(link);
+      return (link, const Duration(hours: 12));
     } catch (e) {
-      problems.add('tmpfiles: $e');
+      problems.add('tmpfiles: ${describe(e)}');
     }
     throw JamError('Could not share the song (${problems.join('; ')})');
+  }
+
+  /// Makes sure [link] serves a file (not an error or web page).
+  static Future<void> check(String link) async {
+    final req = http.Request('GET', Uri.parse(link))
+      ..headers['Range'] = 'bytes=0-1023'
+      ..headers['User-Agent'] = 'Musicly/1.4 (Flutter)';
+    final client = http.Client();
+    try {
+      final res = await client.send(req).timeout(const Duration(seconds: 20));
+      final head = await res.stream
+          .take(1)
+          .fold<List<int>>([], (a, b) => a..addAll(b))
+          .timeout(const Duration(seconds: 20));
+      if (res.statusCode != 200 && res.statusCode != 206) {
+        throw JamError('link gives HTTP ${res.statusCode}');
+      }
+      if (looksLikePage(head, res.headers['content-type'])) {
+        throw const JamError('link gives a web page, not the song');
+      }
+    } finally {
+      client.close();
+    }
+  }
+
+  /// An HTML page (error, captcha, download page) rather than a file.
+  static bool looksLikePage(List<int> head, String? contentType) {
+    if (contentType?.contains('text/html') ?? false) return true;
+    final start = utf8
+        .decode(head.take(64).toList(), allowMalformed: true)
+        .trimLeft()
+        .toLowerCase();
+    return start.startsWith('<!doctype') || start.startsWith('<html');
+  }
+
+  /// A short, readable reason for a network problem.
+  static String describe(Object e) {
+    if (e is JamError) return e.message;
+    if (e is SocketException) {
+      final host = e.address?.host;
+      return host == null ? 'no connection' : 'can\'t reach $host';
+    }
+    if (e is HandshakeException) return 'secure connection failed';
+    if (e is TimeoutException) return 'timed out';
+    if (e is http.ClientException) {
+      return 'connection failed (${e.uri?.host ?? e.message})';
+    }
+    final text = '$e';
+    return text.length > 80 ? '${text.substring(0, 80)}…' : text;
   }
 
   static Future<String> _post(

@@ -286,7 +286,9 @@ class JamController extends ChangeNotifier {
     );
     // Online, the friend's link can be passed on as it is.
     if (song.source.startsWith('http')) {
-      final lasts = song.source.contains('catbox.moe')
+      final lasts =
+          song.source.contains('catbox.moe') ||
+              song.source.contains('tmpfiles.org')
           ? const Duration(hours: 12)
           : const Duration(minutes: 60);
       _links[t.id] = (song.source, song.art, DateTime.now().add(lasts));
@@ -391,13 +393,15 @@ class JamController extends ChangeNotifier {
           final (url, lasts) = await FileDrop.upload(
             file: file,
             name: 'song.$ext',
+            verify: true,
           );
           if (role != JamRole.host) return;
           _links[t.id] = (url, art, DateTime.now().add(lasts));
           shareError = null;
           _host?.pushState();
         } catch (e) {
-          shareError = 'Couldn\'t share "${t.title}" with friends. $e';
+          shareError =
+              'Couldn\'t share "${t.title}" with friends: ${FileDrop.describe(e)}';
           break;
         }
       }
@@ -648,6 +652,7 @@ class JamController extends ChangeNotifier {
           s.position + const Duration(milliseconds: 400),
           playing: s.state.playing,
         );
+        String? why;
         if (err != null && _followingId == now.id) {
           _setFollow('Downloading ${now.title}…');
           try {
@@ -657,16 +662,19 @@ class JamController extends ChangeNotifier {
               s.position,
               playing: s.state.playing,
             );
+            if (err != null) why = 'the song file won\'t play ($err)';
           } catch (e) {
             err = '$e';
+            why = FileDrop.describe(e);
           }
         }
         if (_followingId != now.id) return; // the song changed meanwhile
         if (err == null) {
           _setFollow(null);
         } else {
+          final host = Uri.tryParse(now.url!)?.host ?? 'the file host';
           _setFollow(
-            'Couldn\'t play ${now.title} on this phone. Check your internet.',
+            'Couldn\'t play ${now.title}: ${why ?? 'unknown problem'} ($host).',
             failed: true,
           );
         }
@@ -701,11 +709,17 @@ class JamController extends ChangeNotifier {
     final file = File(
       '${dir.path}/jam-in-${DateTime.now().millisecondsSinceEpoch}.mp3',
     );
+    final req = http.Request('GET', Uri.parse(url))
+      ..headers['User-Agent'] = 'Musicly/1.4 (Flutter)';
     final res = await http.Client()
-        .send(http.Request('GET', Uri.parse(url)))
+        .send(req)
         .timeout(const Duration(seconds: 30));
     if (res.statusCode != 200) throw JamError('HTTP ${res.statusCode}');
     await res.stream.pipe(file.openWrite()).timeout(const Duration(minutes: 3));
+    final head = await file.openRead(0, 64).first;
+    if (FileDrop.looksLikePage(head, res.headers['content-type'])) {
+      throw const JamError('the link gives a web page, not the song');
+    }
     return file;
   }
 

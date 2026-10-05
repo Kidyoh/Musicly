@@ -41,6 +41,11 @@ class FakeCloud {
       );
       return req.response.close();
     }
+    if (seg.first == 'page') {
+      req.response.headers.contentType = ContentType.html;
+      req.response.write('<!DOCTYPE html><html>Download page</html>');
+      return req.response.close();
+    }
     if (seg.first == 'dl') {
       req.response.add(files[seg.last] ?? const []);
       return req.response.close();
@@ -289,7 +294,7 @@ void main() {
       onProgress: (p) => progress = p,
     );
     expect(link, matches(RegExp(r'/dl/123/t\d+$')));
-    expect(lasts2, const Duration(minutes: 60));
+    expect(lasts2, const Duration(hours: 12));
     expect(progress, 1.0);
     expect(FileDrop.isLink(link), isTrue);
     final res = await HttpClient()
@@ -310,6 +315,26 @@ void main() {
           ),
         ),
       ),
+    );
+  });
+
+  test('shared links are checked before anyone gets them', () async {
+    final (link, _) = await FileDrop.upload(
+      bytes: [0x49, 0x44, 0x33, 4, 0],
+      name: 'song.mp3',
+      verify: true,
+    );
+    expect(link, startsWith('${cloud.base}/files/'));
+    await FileDrop.check(link);
+    await expectLater(
+      FileDrop.check('${cloud.base}/page/x'),
+      throwsA(isA<JamError>()),
+    );
+    expect(FileDrop.looksLikePage(utf8.encode('  <html>'), null), isTrue);
+    expect(FileDrop.looksLikePage([0x49, 0x44, 0x33], 'audio/mpeg'), isFalse);
+    expect(
+      FileDrop.describe(const SocketException('x', address: null)),
+      'no connection',
     );
   });
 
