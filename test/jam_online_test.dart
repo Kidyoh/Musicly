@@ -29,14 +29,30 @@ class FakeCloud {
       req.response.statusCode = 503;
       return req.response.close();
     }
-    if (seg.first == 'tmpapi') {
+    if (seg.first == 'uguu') {
+      final body = await req.fold<List<int>>([], (a, b) => a..addAll(b));
+      final name = 'u${_seq++}';
+      files[name] = body;
+      req.response.write(
+        jsonEncode({
+          'success': true,
+          'files': [
+            {'url': '$base/files/$name', 'filename': name},
+          ],
+        }),
+      );
+      return req.response.close();
+    }
+    if (seg.first == 'tmpapi' || seg.first == 'tmpweb') {
+      // tmpweb: like tmpfiles when its /dl/ links give a web page.
+      final web = seg.first == 'tmpweb';
       final body = await req.fold<List<int>>([], (a, b) => a..addAll(b));
       final name = 't${_seq++}';
       files[name] = body;
       req.response.write(
         jsonEncode({
           'status': 'success',
-          'data': {'url': '$base/123/$name'},
+          'data': {'url': '$base/${web ? 'page' : '123'}/$name'},
         }),
       );
       return req.response.close();
@@ -44,6 +60,11 @@ class FakeCloud {
     if (seg.first == 'page') {
       req.response.headers.contentType = ContentType.html;
       req.response.write('<!DOCTYPE html><html>Download page</html>');
+      return req.response.close();
+    }
+    if (seg.first == 'dl' && seg[1] == 'page') {
+      req.response.headers.contentType = ContentType.html;
+      req.response.write('<!DOCTYPE html><html>Click to download</html>');
       return req.response.close();
     }
     if (seg.first == 'dl') {
@@ -115,6 +136,25 @@ class FakeCloud {
 
 void main() {
   late FakeCloud cloud;
+
+  /// The real hosts' formats, pointed at the fake cloud's [routes].
+  List<FileHost> hosts({
+    required String litterbox,
+    required String uguu,
+    required String tmp,
+  }) {
+    final real = {for (final h in FileDrop.defaults) h.name: h};
+    FileHost at(String name, String route) => FileHost(
+      name: name,
+      endpoint: '${cloud.base}/$route',
+      field: real[name]!.field,
+      fields: real[name]!.fields,
+      lasts: real[name]!.lasts,
+      linkFrom: real[name]!.linkFrom,
+    );
+    return [at('Litterbox', litterbox), at('Uguu', uguu), at('tmpfiles', tmp)];
+  }
+
   final added = <(String, String, bool)>[];
   final uploads = <(JamUpload, String)>[];
   final controls = <String>[];
@@ -149,8 +189,7 @@ void main() {
   setUp(() async {
     cloud = FakeCloud();
     await cloud.start();
-    FileDrop.endpoint = '${cloud.base}/files';
-    FileDrop.fallback = '${cloud.base}/tmpapi';
+    FileDrop.hosts = hosts(litterbox: 'files', uguu: 'uguu', tmp: 'tmpapi');
     OnlineJamHost.minGap = const Duration(milliseconds: 200);
     added.clear();
     uploads.clear();
@@ -278,40 +317,44 @@ void main() {
     await dir.delete(recursive: true);
   });
 
-  test('uploads fall back to the second file host', () async {
-    final (good, lasts) = await FileDrop.upload(
-      bytes: [1, 2, 3],
-      name: 'a.mp3',
-    );
-    expect(good, startsWith('${cloud.base}/files/'));
+  test('uploads move on to a host that works, and remember it', () async {
+    final (good, lasts) = await FileDrop.upload(bytes: [1, 2, 3], name: 'a');
+    expect(good, startsWith('${cloud.base}/files/f'));
     expect(lasts, const Duration(hours: 12));
 
-    FileDrop.endpoint = '${cloud.base}/fail';
+    // Like on Kidus's network: Litterbox refuses uploads.
+    FileDrop.hosts = hosts(litterbox: 'fail', uguu: 'uguu', tmp: 'tmpweb');
     var progress = 0.0;
     final (link, lasts2) = await FileDrop.upload(
       bytes: List.filled(5000, 7),
       name: 'b.mp3',
+      verify: true,
       onProgress: (p) => progress = p,
     );
-    expect(link, matches(RegExp(r'/dl/123/t\d+$')));
-    expect(lasts2, const Duration(hours: 12));
+    expect(link, startsWith('${cloud.base}/files/u'));
+    expect(lasts2, const Duration(hours: 3));
     expect(progress, 1.0);
     expect(FileDrop.isLink(link), isTrue);
-    final res = await HttpClient()
-        .getUrl(Uri.parse(link))
-        .then((r) => r.close());
-    expect(res.statusCode, 200);
+    // Uguu worked, so it goes first next time.
+    expect(FileDrop.hosts.first.name, 'Uguu');
 
-    FileDrop.fallback = '${cloud.base}/fail';
+    // tmpfiles' direct link is still built right when it's the one used.
+    FileDrop.hosts = hosts(litterbox: 'fail', uguu: 'fail', tmp: 'tmpapi');
+    final (tmp, _) = await FileDrop.upload(bytes: [5], name: 'c', verify: true);
+    expect(tmp, matches(RegExp(r'/dl/123/t\d+$')));
+
+    // Nothing works: the error says why for each host.
+    FileDrop.hosts = hosts(litterbox: 'fail', uguu: 'fail', tmp: 'tmpweb');
     await expectLater(
-      FileDrop.upload(bytes: [1], name: 'c.mp3'),
+      FileDrop.upload(bytes: [1], name: 'd', verify: true),
       throwsA(
         isA<JamError>().having(
           (e) => e.message,
           'message',
           allOf(
             contains('Litterbox: HTTP 503'),
-            contains('tmpfiles: HTTP 503'),
+            contains('Uguu: HTTP 503'),
+            contains('tmpfiles: link gives a web page'),
           ),
         ),
       ),

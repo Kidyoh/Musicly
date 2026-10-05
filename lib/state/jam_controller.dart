@@ -286,11 +286,9 @@ class JamController extends ChangeNotifier {
     );
     // Online, the friend's link can be passed on as it is.
     if (song.source.startsWith('http')) {
-      final lasts =
-          song.source.contains('catbox.moe') ||
-              song.source.contains('tmpfiles.org')
-          ? const Duration(hours: 12)
-          : const Duration(minutes: 60);
+      final lasts = song.source.contains('uguu.se')
+          ? const Duration(hours: 3)
+          : const Duration(hours: 12);
       _links[t.id] = (song.source, song.art, DateTime.now().add(lasts));
     }
     return _queue(t, next, by.name);

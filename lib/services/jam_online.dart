@@ -104,31 +104,89 @@ class NtfyRelay {
   void close() => _client.close();
 }
 
-/// Free temporary file hosts: songs in an online Jam are uploaded as
-/// unlisted links that delete themselves. Litterbox (by catbox.moe) is tried
-/// first, then tmpfiles.org if Litterbox can't be reached.
+/// A free temporary file host: where to upload and how to read the reply.
+class FileHost {
+  const FileHost({
+    required this.name,
+    required this.endpoint,
+    required this.field,
+    required this.lasts,
+    this.fields = const {},
+    required this.linkFrom,
+  });
+
+  final String name;
+  final String endpoint;
+
+  /// Form field that carries the file.
+  final String field;
+  final Map<String, String> fields;
+
+  /// How long the host keeps files.
+  final Duration lasts;
+
+  /// The direct file link from the host's reply.
+  final String Function(String body) linkFrom;
+
+  String get origin {
+    final u = Uri.parse(endpoint);
+    return '${u.scheme}://${u.authority}';
+  }
+}
+
+/// Songs in an online Jam are uploaded to free temporary file hosts as
+/// unlisted links that delete themselves. Hosts are tried in turn (some are
+/// blocked on some networks), every link is checked before anyone gets it,
+/// and the host that worked is tried first next time.
 abstract final class FileDrop {
-  static String endpoint = const String.fromEnvironment(
-    'JAM_FILES',
-    defaultValue: 'https://litterbox.catbox.moe/resources/internals/api.php',
-  );
-  static String fallback = const String.fromEnvironment(
-    'JAM_FILES_2',
-    defaultValue: 'https://tmpfiles.org/api/v1/upload',
-  );
+  /// Tried in this order at first.
+  static final List<FileHost> defaults = [
+    FileHost(
+      name: 'Litterbox',
+      endpoint: 'https://litterbox.catbox.moe/resources/internals/api.php',
+      field: 'fileToUpload',
+      fields: const {'reqtype': 'fileupload', 'time': '12h'},
+      lasts: const Duration(hours: 12),
+      linkFrom: (body) => body.trim(),
+    ),
+    FileHost(
+      name: 'Uguu',
+      endpoint: 'https://uguu.se/upload',
+      field: 'files[]',
+      lasts: const Duration(hours: 3),
+      linkFrom: (body) =>
+          (((jsonDecode(body) as Map)['files'] as List).first as Map)['url']
+              as String,
+    ),
+    FileHost(
+      name: 'tmpfiles',
+      endpoint: 'https://tmpfiles.org/api/v1/upload',
+      field: 'file',
+      fields: const {'expire': '43200'}, // 12 hours
+      lasts: const Duration(hours: 12),
+      linkFrom: (body) {
+        final page = Uri.parse(
+          ((jsonDecode(body) as Map)['data'] as Map)['url'] as String,
+        );
+        // The page link shows a download page; /dl/ is the file itself.
+        return page
+            .replace(
+              scheme: page.host == 'tmpfiles.org' ? 'https' : page.scheme,
+              pathSegments: ['dl', ...page.pathSegments],
+            )
+            .toString();
+      },
+    ),
+  ];
 
-  /// How long Litterbox keeps links (1h, 12h, 24h or 72h).
-  static const keep = '12h';
+  /// Tried in turn; the one that last worked comes first.
+  static List<FileHost> hosts = List.of(defaults);
 
-  /// Whether [url] is a song link we accept: https, or a configured host.
+  /// Whether [url] is a link we accept: https, or one of the hosts.
   static bool isLink(String? url) {
     if (url == null) return false;
     if (url.startsWith('https://')) return true;
-    for (final e in [endpoint, fallback]) {
-      final host = Uri.parse(e);
-      if (url.startsWith('${host.scheme}://${host.authority}/')) return true;
-    }
-    return false;
+    return hosts.any((h) => url.startsWith('${h.origin}/'));
   }
 
   /// Uploads [bytes] (or the file at [file]); returns the link and how long
@@ -144,48 +202,28 @@ abstract final class FileDrop {
     void Function(double done)? onProgress,
   }) async {
     final problems = <String>[];
-    try {
-      final url = await _post(
-        endpoint,
-        {'reqtype': 'fileupload', 'time': keep},
-        'fileToUpload',
-        file,
-        bytes,
-        name,
-        onProgress,
-      );
-      final link = url.trim();
-      if (!isLink(link)) throw const JamError('unexpected reply');
-      if (verify) await check(link);
-      return (link, const Duration(hours: 12));
-    } catch (e) {
-      problems.add('Litterbox: ${describe(e)}');
-    }
-    try {
-      final body = await _post(
-        fallback,
-        const {'expire': '43200'}, // 12 hours
-        'file',
-        file,
-        bytes,
-        name,
-        onProgress,
-      );
-      final page = ((jsonDecode(body) as Map)['data'] as Map)['url'] as String;
-      // The page link shows a download page; /dl/ is the file itself.
-      final u = Uri.parse(page);
-      final link = u
-          .replace(
-            scheme: u.scheme == 'http' && u.host == 'tmpfiles.org'
-                ? 'https'
-                : u.scheme,
-            pathSegments: ['dl', ...u.pathSegments],
-          )
-          .toString();
-      if (verify) await check(link);
-      return (link, const Duration(hours: 12));
-    } catch (e) {
-      problems.add('tmpfiles: ${describe(e)}');
+    for (final host in List.of(hosts)) {
+      try {
+        final body = await _post(
+          host.endpoint,
+          host.fields,
+          host.field,
+          file,
+          bytes,
+          name,
+          onProgress,
+        );
+        final link = host.linkFrom(body).trim();
+        if (!isLink(link)) throw const JamError('unexpected reply');
+        if (verify) await check(link);
+        // Start with this host next time.
+        hosts
+          ..remove(host)
+          ..insert(0, host);
+        return (link, host.lasts);
+      } catch (e) {
+        problems.add('${host.name}: ${describe(e)}');
+      }
     }
     throw JamError('Could not share the song (${problems.join('; ')})');
   }
