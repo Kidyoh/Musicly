@@ -1,0 +1,12 @@
+/* Musicly brand: cream + night, coral accent, waveform bars, Inter with an italic serif accent. */
+:root { --cream: #F3EEE6; --night: #0E0F12; --coral: #FF6B4A; --lilac: #B7A8FF; --ink: #1C1D22; --sub: #8A8FA3; }
+.serif { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; letter-spacing: -1px; }
+.brand { position: absolute; display: flex; align-items: center; gap: 12px; font-weight: 800; font-size: 24px; letter-spacing: -0.5px; z-index: 9; }
+.brand .logo { width: 42px; height: 42px; border-radius: 12px; }
+.bars { position: absolute; display: flex; align-items: center; }
+.bars i { display: block; border-radius: 999px; }
+/* Dark phone */
+.ph { position: absolute; width: 400px; border-radius: 60px; background: #050506; padding: 12px; box-shadow: 0 60px 120px rgba(0,0,0,.45), 0 0 0 2px #2a2b30; }
+.ph .sc { border-radius: 49px; overflow: hidden; background: #0E0F12; color: #F4F5F7; position: relative; height: 100%; }
+.ph .stat { display: flex; justify-content: space-between; padding: 16px 30px 0; font-weight: 600; font-size: 15px; }
+.mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
