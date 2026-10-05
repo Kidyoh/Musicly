@@ -51,3 +51,7 @@ musicly-web-release.zip
 release/
 android/build/
 !dist/*.apk
+
+# promo video: large generated files
+video/voices/
+video/audio/
