@@ -1,8 +1,10 @@
-"""Narration: one clip per line with Piper (offline neural voice), plus the timing the video is built on."""
-import json, wave, sys
-from piper import PiperVoice, SynthesisConfig
+"""Narration: one clip per line with Kokoro (Apache-2.0, offline neural TTS), plus the timing the video is built on."""
+import json, wave
+import numpy as np
+from kokoro_onnx import Kokoro
 
-VOICE = 'voices/en_US-ryan-high.onnx'
+VOICE = 'af_heart'     # Kokoro's warm female voice
+SPEED = 1.08
 # (text, gap before the NEXT line in seconds)
 LINES = [
     ("Meet Musicly.", 0.30),
@@ -24,16 +26,17 @@ LINES = [
 LEAD = 0.45   # silence before the first word
 TAIL = 1.6    # music-only ending
 
-voice = PiperVoice.load(VOICE)
-cfg = SynthesisConfig(length_scale=0.93, noise_scale=0.6, noise_w_scale=0.7)
+kokoro = Kokoro('voices/kokoro-v1.0.onnx', 'voices/voices-v1.0.bin')
 t = LEAD
 out = []
 for i, (text, gap) in enumerate(LINES):
     path = f'audio/lines/{i:02d}.wav'
+    samples, sr = kokoro.create(text, voice=VOICE, speed=SPEED, lang='en-us')
+    samples = np.concatenate([samples, np.zeros(int(.06 * sr), np.float32)])   # tiny tail so words never clip
     with wave.open(path, 'wb') as w:
-        voice.synthesize_wav(text, w, syn_config=cfg)
-    with wave.open(path) as w:
-        dur = w.getnframes() / w.getframerate()
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr)
+        w.writeframes((np.clip(samples, -1, 1) * 32767).astype('<i2').tobytes())
+    dur = len(samples) / sr
     out.append({'i': i, 'text': text, 'start': round(t, 3), 'dur': round(dur, 3), 'file': path})
     t += dur + gap
 total = round(t + TAIL, 3)
