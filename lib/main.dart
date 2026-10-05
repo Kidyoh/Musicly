@@ -14,9 +14,10 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (!kIsWeb) {
     await JustAudioBackground.init(
-      androidNotificationChannelId: 'com.musicly.audio',
-      androidNotificationChannelName: 'Musicly playback',
-      androidNotificationChannelDescription: 'Playback controls for the notification shade and lock screen',
+      androidNotificationChannelId: 'com.musicly.player',
+      androidNotificationChannelName: 'Now playing',
+      androidNotificationChannelDescription:
+          'Playback controls for the notification shade and lock screen',
       androidNotificationOngoing: true,
       androidNotificationIcon: 'drawable/ic_stat_musicly',
       notificationColor: const Color(0xFF1C1D22),

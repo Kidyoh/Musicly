@@ -7,6 +7,12 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Notification
+import android.content.Intent
+import android.provider.Settings
 import android.os.Handler
 import android.os.Looper
 import android.content.ContentValues
@@ -26,6 +32,10 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 
 class MainActivity : AudioServiceActivity() {
+    companion object {
+        const val PLAYER_CHANNEL = "com.musicly.player"
+    }
+
     private val io = Executors.newFixedThreadPool(2)
     private val main = Handler(Looper.getMainLooper())
     private var pendingPermission: MethodChannel.Result? = null
@@ -34,6 +44,45 @@ class MainActivity : AudioServiceActivity() {
         get() = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO
         else Manifest.permission.READ_EXTERNAL_STORAGE
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        createPlayerChannel()
+        super.onCreate(savedInstanceState)
+    }
+
+    // audio_service would create a low-importance ("silent") channel, and
+    // many phones hide silent notifications on the lock screen. Creating the
+    // channel first, at default importance with no sound, keeps the player
+    // visible on the lock screen without ever making a noise.
+    private fun createPlayerChannel() {
+        if (Build.VERSION.SDK_INT < 26) return
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+        manager.deleteNotificationChannel("com.musicly.audio")
+        if (manager.getNotificationChannel(PLAYER_CHANNEL) != null) return
+        val channel = NotificationChannel(
+            PLAYER_CHANNEL, "Now playing", NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = "Player controls in the notification shade and on the lock screen"
+            setSound(null, null)
+            enableVibration(false)
+            enableLights(false)
+            setShowBadge(false)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        }
+        manager.createNotificationChannel(channel)
+    }
+
+    private fun openNotificationSettings(): Boolean {
+        val intent = if (Build.VERSION.SDK_INT >= 26) {
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+        } else {
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
+        }
+        return try {
+            startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true
+        } catch (e: Exception) { false }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "musicly/media")
@@ -41,6 +90,7 @@ class MainActivity : AudioServiceActivity() {
                 when (call.method) {
                     "requestPermission" -> requestAudioPermission(result)
                     "requestNotifications" -> requestNotificationPermission(result)
+                    "openNotificationSettings" -> result.success(openNotificationSettings())
                     "scan" -> io.execute {
                         val songs = try { scan() } catch (e: Exception) { null }
                         main.post {

@@ -26,6 +26,15 @@ class DeviceLibrary {
     } catch (_) {}
   }
 
+  /// Opens this app's notification settings, where some phones (Xiaomi,
+  /// Tecno, Infinix, Samsung) keep a separate "show on lock screen" switch.
+  static Future<void> openNotificationSettings() async {
+    if (!supported) return;
+    try {
+      await _ch.invokeMethod<bool>('openNotificationSettings');
+    } catch (_) {}
+  }
+
   static Future<List<Track>> scan() async {
     if (!supported) return [];
     final raw = await _ch.invokeListMethod<Map>('scan') ?? [];

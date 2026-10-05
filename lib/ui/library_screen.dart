@@ -201,6 +201,22 @@ class LibraryScreen extends StatelessWidget {
                   },
                 ),
               ],
+              const Divider(height: 28),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(AppIcons.bell),
+                title: const Text(
+                  'Player on the lock screen',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text(
+                  'Not showing? Turn on "Lock screen" for Musicly notifications.',
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  DeviceLibrary.openNotificationSettings();
+                },
+              ),
             ],
           ),
         ),

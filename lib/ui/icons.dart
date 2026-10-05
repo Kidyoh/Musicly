@@ -3,6 +3,8 @@ import 'package:flutter/widgets.dart';
 /// Every icon in the app comes from Phosphor (MIT, fonts bundled in
 /// assets/fonts): regular for outlines, fill for active states.
 abstract final class AppIcons {
+  static const IconData bell = IconData(0xe0ce, fontFamily: 'PhosphorRegular');
+
   // Navigation
   static const IconData home = IconData(0xe2c2, fontFamily: 'PhosphorRegular');
   static const IconData homeOn = IconData(0xe2c2, fontFamily: 'PhosphorFill');
