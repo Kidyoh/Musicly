@@ -50,3 +50,4 @@ musicly-web-release.zip
 *.apk
 release/
 android/build/
+!dist/*.apk
