@@ -63,4 +63,24 @@ void main() {
     expect(TelegramBot.trackFrom(big, 'V'), isNull);
     expect(TelegramBot.isTooBig(big), isTrue);
   });
+
+  test('finds channels the bot was made admin of', () {
+    Map added(int id, String title, String status, {String type = 'channel'}) =>
+        {
+          'my_chat_member': {
+            'chat': {'id': id, 'title': title, 'type': type},
+            'new_chat_member': {'status': status},
+          },
+        };
+    final found = TelegramBot.channelsFrom([
+      added(-1001, 'Old', 'administrator'),
+      added(-1002, 'Removed', 'administrator'),
+      {'channel_post': {}},
+      added(-1003, 'A group', 'administrator', type: 'supergroup'),
+      added(-1002, 'Removed', 'left'),
+      added(-1004, 'New', 'administrator'),
+    ]);
+    expect(found.map((c) => c.title), ['New', 'Old']);
+    expect(found.first.id, -1004);
+  });
 }

@@ -4,8 +4,9 @@ A monochrome, Material 3 music player for Android, iOS and web, built with Flutt
 
 ## Music sources (all full-length)
 
-- **Your Telegram channel**: songs posted in your own channel, read straight from Telegram with a
-  bot token you paste in the app (no server). New posts appear automatically; "Import older songs"
+- **Your Telegram channel**: songs posted in any channel you run, read straight from Telegram through
+  your own bot (no server). The app walks you through it: open BotFather, paste the token, tap
+  "Add bot to my channel", and the channel shows up by itself. New posts appear automatically; "Import older songs"
   reads the channel's history; songs forwarded to the bot are added too. Bots can stream files up to
   20 MB. After each sync, songs are saved to **Music/Musicly** on the phone so they play offline and
   stay after a reinstall.

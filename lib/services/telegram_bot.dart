@@ -74,8 +74,45 @@ class TelegramBot {
     'offset': offset,
     'timeout': 0,
     'limit': 100,
-    'allowed_updates': ['channel_post', 'edited_channel_post', 'message'],
+    'allowed_updates': _allowed,
   })) as List).cast<Map>();
+
+  static const _allowed = [
+    'channel_post',
+    'edited_channel_post',
+    'message',
+    'my_chat_member',
+  ];
+
+  /// Channels this bot was recently made an admin of, newest first, read
+  /// from the "bot was added" updates without consuming them.
+  Future<List<({int id, String title})>> adminChannels() async {
+    final updates = ((await call('getUpdates', {
+      'offset': -100,
+      'timeout': 0,
+      'allowed_updates': _allowed,
+    })) as List).cast<Map>();
+    return channelsFrom(updates);
+  }
+
+  static List<({int id, String title})> channelsFrom(List<Map> updates) {
+    final found = <int, String>{};
+    for (final u in updates) {
+      final m = u['my_chat_member'] as Map?;
+      final chat = m?['chat'] as Map?;
+      if (chat == null || chat['type'] != 'channel') continue;
+      final id = (chat['id'] as num).toInt();
+      final status = (m!['new_chat_member'] as Map?)?['status'];
+      found.remove(id);
+      if (status == 'administrator') {
+        found[id] = (chat['title'] as String?) ?? 'Channel';
+      }
+    }
+    return [
+      for (final e in found.entries.toList().reversed)
+        (id: e.key, title: e.value),
+    ];
+  }
 
   /// Signed download link for a file; Telegram keeps them valid for at least an hour.
   Future<String> fileUrl(String fileId) async {
