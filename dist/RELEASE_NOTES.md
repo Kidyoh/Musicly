@@ -1,22 +1,21 @@
-## Musicly 1.3.1 — Jam from anywhere
+## Musicly 1.3.3 — Jam from anywhere
 
-**Fixed in 1.3.1:** friends in an online Jam could see the song but hear nothing. Their phones now load and play the host's song properly (downloading it first if streaming doesn't work), the host keeps retrying if a song fails to share, and both screens show what's happening — with **Try again** if something goes wrong.
-
+**Fixed in 1.3.3:** online Jams could show the song with no sound for friends, because the file hosts used to share songs didn't work on some networks. The host's phone now tries several free hosts (Litterbox, Uguu, tmpfiles), checks that the song link really works before friends get it, and remembers which host works on your network. If something still goes wrong, both screens say exactly why, with **Try again**.
 
 **New: online Jams.** Listen together with friends who aren't in the same room. Everyone hears the host's songs on their own phone, in step.
 
 - **Host:** tap the people icon on Home → **Start a Jam** → **Online — anywhere**. Tap **Copy invite** and send it to friends in any chat.
 - **Friends:** open Jam, type the code under **Have a code?** and tap **Join**. The music starts on their phone, in step with the host. They can turn **Listen on this phone** off to just follow along.
 - Friends can add songs from the host's library or send their own. The host can let friends control playback.
-- How it works: messages go through the free ntfy.sh relay, and songs are shared as private links on Litterbox (or tmpfiles.org as a backup) that delete themselves within 12 hours. There's no account and no server of our own. Online Jams use internet data: the host uploads each song once, and each friend streams it.
+- How it works: messages go through the free ntfy.sh relay, and songs are shared as private links on free temporary file hosts (Litterbox, Uguu or tmpfiles) that delete themselves within 12 hours. There's no account and no server of our own. Online Jams use internet data: the host uploads each song once, and each friend streams it.
 
 **Same-room Jams** still work without internet: same Wi-Fi or the host's hotspot, and the music plays from the host's phone.
 
-Everyone needs Musicly 1.3.1. Updating? Just install over the old version — nothing is lost.
+Everyone needs Musicly 1.3.3. Updating? Just install over the old version — nothing is lost.
 
 **Which file do I download?**
-- **Musicly-1.3.1-arm64.apk** — almost every phone from the last 6+ years. Pick this one.
-- **Musicly-1.3.1-older-phones.apk** — only if the first one says "App not installed".
+- **Musicly-1.3.3-arm64.apk** — almost every phone from the last 6+ years. Pick this one.
+- **Musicly-1.3.3-older-phones.apk** — only if the first one says "App not installed".
 
 **How to install**
 1. Tap the APK below to download it.
