@@ -40,6 +40,7 @@ class MainActivity : AudioServiceActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "requestPermission" -> requestAudioPermission(result)
+                    "requestNotifications" -> requestNotificationPermission(result)
                     "scan" -> io.execute {
                         val songs = try { scan() } catch (e: Exception) { null }
                         main.post {
@@ -90,6 +91,18 @@ class MainActivity : AudioServiceActivity() {
         get() = if (Build.VERSION.SDK_INT < 29)
             arrayOf(audioPermission, Manifest.permission.WRITE_EXTERNAL_STORAGE)
         else arrayOf(audioPermission)
+
+    /** Android 13+: lets the player notification (and lock-screen controls) show. */
+    private fun requestNotificationPermission(result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT < 33 ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+            result.success(true)
+            return
+        }
+        pendingPermission?.success(false)
+        pendingPermission = result
+        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 4711)
+    }
 
     private fun requestAudioPermission(result: MethodChannel.Result) {
         if (neededPermissions.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }) {

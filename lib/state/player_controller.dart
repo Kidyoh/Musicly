@@ -10,6 +10,7 @@ import 'package:just_audio_background/just_audio_background.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/track.dart';
+import '../services/device_library.dart';
 import '../services/telegram_bot.dart';
 
 /// Picked files on web live only in memory.
@@ -323,6 +324,7 @@ class PlayerController extends ChangeNotifier {
   }
 
   int _retries = 0;
+  bool _askedNotifications = false;
 
   /// A song that fails to load (expired link, network blip) is retried with a
   /// fresh link; after two failures playback moves on instead of stopping.
@@ -425,6 +427,10 @@ class PlayerController extends ChangeNotifier {
           .indexWhere((t) => t.id == target)
           .clamp(0, tracks.length - 1);
       if (tracks.isEmpty) return;
+    }
+    if (!_askedNotifications) {
+      _askedNotifications = true;
+      unawaited(DeviceLibrary.requestNotifications());
     }
     queue = List.of(tracks);
     currentIndex = index;

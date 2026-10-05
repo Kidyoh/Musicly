@@ -16,8 +16,13 @@ Future<void> main() async {
     await JustAudioBackground.init(
       androidNotificationChannelId: 'com.musicly.audio',
       androidNotificationChannelName: 'Musicly playback',
+      androidNotificationChannelDescription: 'Playback controls for the notification shade and lock screen',
       androidNotificationOngoing: true,
       androidNotificationIcon: 'drawable/ic_stat_musicly',
+      notificationColor: const Color(0xFF1C1D22),
+      preloadArtwork: true,
+      artDownscaleWidth: 512,
+      artDownscaleHeight: 512,
     );
   }
   final library = LibraryController();

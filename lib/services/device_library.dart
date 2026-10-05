@@ -17,6 +17,15 @@ class DeviceLibrary {
     return await _ch.invokeMethod<bool>('requestPermission') ?? false;
   }
 
+  /// Asks once (Android 13+) so the playback notification and lock-screen
+  /// controls are allowed.
+  static Future<void> requestNotifications() async {
+    if (!supported) return;
+    try {
+      await _ch.invokeMethod<bool>('requestNotifications');
+    } catch (_) {}
+  }
+
   static Future<List<Track>> scan() async {
     if (!supported) return [];
     final raw = await _ch.invokeListMethod<Map>('scan') ?? [];
