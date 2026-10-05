@@ -24,6 +24,27 @@ class FakeCloud {
 
   Future<void> _handle(HttpRequest req) async {
     final seg = req.uri.pathSegments;
+    if (seg.first == 'fail') {
+      await req.drain<void>();
+      req.response.statusCode = 503;
+      return req.response.close();
+    }
+    if (seg.first == 'tmpapi') {
+      final body = await req.fold<List<int>>([], (a, b) => a..addAll(b));
+      final name = 't${_seq++}';
+      files[name] = body;
+      req.response.write(
+        jsonEncode({
+          'status': 'success',
+          'data': {'url': '$base/123/$name'},
+        }),
+      );
+      return req.response.close();
+    }
+    if (seg.first == 'dl') {
+      req.response.add(files[seg.last] ?? const []);
+      return req.response.close();
+    }
     if (seg.first == 'files') {
       if (req.method == 'POST') {
         final body = await req.fold<List<int>>([], (a, b) => a..addAll(b));
@@ -124,6 +145,7 @@ void main() {
     cloud = FakeCloud();
     await cloud.start();
     FileDrop.endpoint = '${cloud.base}/files';
+    FileDrop.fallback = '${cloud.base}/tmpapi';
     OnlineJamHost.minGap = const Duration(milliseconds: 200);
     added.clear();
     uploads.clear();
@@ -249,6 +271,46 @@ void main() {
     );
     await expectLater(late.join('Sara'), throwsA(isA<JamError>()));
     await dir.delete(recursive: true);
+  });
+
+  test('uploads fall back to the second file host', () async {
+    final (good, lasts) = await FileDrop.upload(
+      bytes: [1, 2, 3],
+      name: 'a.mp3',
+    );
+    expect(good, startsWith('${cloud.base}/files/'));
+    expect(lasts, const Duration(hours: 12));
+
+    FileDrop.endpoint = '${cloud.base}/fail';
+    var progress = 0.0;
+    final (link, lasts2) = await FileDrop.upload(
+      bytes: List.filled(5000, 7),
+      name: 'b.mp3',
+      onProgress: (p) => progress = p,
+    );
+    expect(link, matches(RegExp(r'/dl/123/t\d+$')));
+    expect(lasts2, const Duration(minutes: 60));
+    expect(progress, 1.0);
+    expect(FileDrop.isLink(link), isTrue);
+    final res = await HttpClient()
+        .getUrl(Uri.parse(link))
+        .then((r) => r.close());
+    expect(res.statusCode, 200);
+
+    FileDrop.fallback = '${cloud.base}/fail';
+    await expectLater(
+      FileDrop.upload(bytes: [1], name: 'c.mp3'),
+      throwsA(
+        isA<JamError>().having(
+          (e) => e.message,
+          'message',
+          allOf(
+            contains('Litterbox: HTTP 503'),
+            contains('tmpfiles: HTTP 503'),
+          ),
+        ),
+      ),
+    );
   });
 
   test('the host can remove a friend', () async {

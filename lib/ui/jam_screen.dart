@@ -437,6 +437,15 @@ class _Hosting extends StatelessWidget {
             ],
           ),
         ),
+        if (jam.online && jam.shareError != null) ...[
+          const SizedBox(height: 10),
+          _status(
+            context,
+            jam.shareError!,
+            failed: true,
+            onRetry: jam.retryShare,
+          ),
+        ],
         if (jam.online) ...[
           const SizedBox(height: 10),
           Row(
@@ -718,6 +727,16 @@ class _JoinedState extends State<_Joined> {
               ),
             ),
         ],
+        if (jam.online && jam.listenHere && jam.followStatus != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: _status(
+              context,
+              jam.followStatus!,
+              failed: jam.followFailed,
+              onRetry: jam.retryFollow,
+            ),
+          ),
         if (jam.online) ...[
           const SizedBox(height: 10),
           SwitchListTile(
@@ -1027,3 +1046,37 @@ Future<bool?> _pickMode(BuildContext context) => showModalBottomSheet<bool>(
     ),
   ),
 );
+
+/// A progress or problem line, with "Try again" when something failed.
+Widget _status(
+  BuildContext context,
+  String text, {
+  bool failed = false,
+  VoidCallback? onRetry,
+}) {
+  final p = Palette.of(context);
+  return _card(
+    context,
+    Row(
+      children: [
+        if (failed)
+          const Icon(AppIcons.close, size: 18, color: _red)
+        else
+          const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(color: failed ? _red : p.sub, height: 1.35),
+          ),
+        ),
+        if (failed && onRetry != null)
+          TextButton(onPressed: onRetry, child: const Text('Try again')),
+      ],
+    ),
+  );
+}

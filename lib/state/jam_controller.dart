@@ -129,6 +129,11 @@ class JamController extends ChangeNotifier {
         await h.start();
         unawaited(_shareLibrary());
         unawaited(_shareUpcoming());
+        // Refreshes links before they expire.
+        _tick = Timer.periodic(
+          const Duration(minutes: 1),
+          (_) => _shareUpcoming(),
+        );
       } else {
         final h = JamHost(
           jamName: jamName,
@@ -281,7 +286,10 @@ class JamController extends ChangeNotifier {
     );
     // Online, the friend's link can be passed on as it is.
     if (song.source.startsWith('http')) {
-      _links[t.id] = (song.source, song.art, DateTime.now());
+      final lasts = song.source.contains('catbox.moe')
+          ? const Duration(hours: 12)
+          : const Duration(minutes: 60);
+      _links[t.id] = (song.source, song.art, DateTime.now().add(lasts));
     }
     return _queue(t, next, by.name);
   }
@@ -342,13 +350,24 @@ class JamController extends ChangeNotifier {
 
   // ---- Sharing songs in an online Jam ----------------------------------------
 
-  /// Track id -> (song link, cover link, when shared).
+  /// Track id -> (song link, cover link, when the link stops working).
   final Map<String, (String, String?, DateTime)> _links = {};
   String? _libraryLink;
   bool _sharing = false;
+  Timer? _retryShare;
 
   /// The song being uploaded for friends right now, for the host's screen.
   String? sharingTitle;
+
+  /// Why the last song couldn't be shared, shown to the host.
+  String? shareError;
+
+  bool _linkUsable(String id) {
+    final link = _links[id];
+    // Share again a few minutes before the link expires.
+    return link != null &&
+        link.$3.difference(DateTime.now()) > const Duration(minutes: 8);
+  }
 
   /// Uploads the current and next song, so friends can play them.
   Future<void> _shareUpcoming() async {
@@ -357,12 +376,7 @@ class JamController extends ChangeNotifier {
     try {
       final todo = [?player.current, ..._upcoming.take(1)];
       for (final t in todo) {
-        final link = _links[t.id];
-        // Links last 12 hours; share again well before then.
-        if (link != null && DateTime.now().difference(link.$3).inHours < 10) {
-          continue;
-        }
-        if (t.isRadio) continue;
+        if (_linkUsable(t.id) || t.isRadio) continue;
         sharingTitle = t.title;
         notifyListeners();
         try {
@@ -371,15 +385,20 @@ class JamController extends ChangeNotifier {
           String? art;
           if (cover != null && cover.isNotEmpty) {
             try {
-              art = await FileDrop.upload(bytes: cover, name: 'cover.jpg');
+              art = (await FileDrop.upload(bytes: cover, name: 'cover.jpg')).$1;
             } catch (_) {}
           }
-          final url = await FileDrop.upload(file: file, name: 'song.$ext');
+          final (url, lasts) = await FileDrop.upload(
+            file: file,
+            name: 'song.$ext',
+          );
           if (role != JamRole.host) return;
-          _links[t.id] = (url, art, DateTime.now());
+          _links[t.id] = (url, art, DateTime.now().add(lasts));
+          shareError = null;
           _host?.pushState();
-        } catch (_) {
-          // Tried again on the next change.
+        } catch (e) {
+          shareError = 'Couldn\'t share "${t.title}" with friends. $e';
+          break;
         }
       }
     } finally {
@@ -387,21 +406,30 @@ class JamController extends ChangeNotifier {
       sharingTitle = null;
       if (active) notifyListeners();
     }
-    // The song may have changed while uploading.
+    if (role != JamRole.host || !online) return;
     final now = player.current;
-    if (role == JamRole.host &&
-        online &&
-        now != null &&
-        !now.isRadio &&
-        !_links.containsKey(now.id)) {
+    final missing = now != null && !now.isRadio && !_linkUsable(now.id);
+    if (missing && shareError == null) {
+      // The song changed while uploading.
       unawaited(_shareUpcoming());
+    } else if (missing) {
+      // Failed: keep trying, so friends aren't left in silence.
+      _retryShare?.cancel();
+      _retryShare = Timer(const Duration(seconds: 20), _shareUpcoming);
     }
+  }
+
+  /// Tries sharing the current song again right away.
+  void retryShare() {
+    shareError = null;
+    notifyListeners();
+    unawaited(_shareUpcoming());
   }
 
   /// Uploads the host's song list so friends can browse it.
   Future<void> _shareLibrary() async {
     try {
-      final url = await FileDrop.upload(
+      final (url, _) = await FileDrop.upload(
         bytes: utf8.encode(OnlineJamGuest.libraryJson(_search(''))),
         name: 'library.json',
       );
@@ -563,18 +591,35 @@ class JamController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Track _followTrack(JamTrack t) => Track(
+  Track _followTrack(JamTrack t, String uri) => Track(
     id: 'jam:online:${t.id}',
     title: t.title,
     artist: t.artist,
     source: TrackSource.file,
-    uri: t.url,
+    uri: uri,
     artworkUrl: t.artUrl,
     duration: t.durationMs == null
         ? null
         : Duration(milliseconds: t.durationMs!),
     album: '${_session?.jamName ?? 'Jam'} with ${_session?.hostName}',
   );
+
+  /// What listening along is doing, for the screen: null when all is well.
+  String? followStatus;
+  bool followFailed = false;
+
+  void _setFollow(String? status, {bool failed = false}) {
+    followStatus = status;
+    followFailed = failed;
+    notifyListeners();
+  }
+
+  /// Tries the current song again after it failed.
+  void retryFollow() {
+    _followingId = null;
+    _setFollow(null);
+    _follow();
+  }
 
   Future<void> _follow() async {
     final s = _session;
@@ -585,7 +630,7 @@ class JamController extends ChangeNotifier {
     if (_followingId != null && mine != null && !mine.isJam) {
       listenHere = false;
       _followingId = null;
-      notifyListeners();
+      _setFollow(null);
       return;
     }
     if (now == null || now.url == null) {
@@ -596,14 +641,41 @@ class JamController extends ChangeNotifier {
     try {
       if (_followingId != now.id) {
         _followingId = now.id;
-        await player.playQueue([_followTrack(now)], 0);
-        if (!s.state.playing) await player.player.pause();
-        await player.seek(s.position + const Duration(milliseconds: 300));
+        _setFollow('Loading ${now.title}…');
+        // Stream the link; if this phone can't, download it first.
+        var err = await player.playJam(
+          _followTrack(now, now.url!),
+          s.position + const Duration(milliseconds: 400),
+          playing: s.state.playing,
+        );
+        if (err != null && _followingId == now.id) {
+          _setFollow('Downloading ${now.title}…');
+          try {
+            final file = await _download(now.url!);
+            err = await player.playJam(
+              _followTrack(now, file.path),
+              s.position,
+              playing: s.state.playing,
+            );
+          } catch (e) {
+            err = '$e';
+          }
+        }
+        if (_followingId != now.id) return; // the song changed meanwhile
+        if (err == null) {
+          _setFollow(null);
+        } else {
+          _setFollow(
+            'Couldn\'t play ${now.title} on this phone. Check your internet.',
+            failed: true,
+          );
+        }
         return;
       }
+      if (followFailed) return;
       if (s.state.playing && !player.isPlaying) {
         await player.seek(s.position);
-        await player.player.play();
+        unawaited(player.player.play());
       } else if (!s.state.playing && player.isPlaying) {
         await player.player.pause();
       } else if (s.state.playing) {
@@ -616,6 +688,27 @@ class JamController extends ChangeNotifier {
     }
   }
 
+  /// Saves a shared song to a temporary file.
+  Future<File> _download(String url) async {
+    final dir = await getTemporaryDirectory();
+    for (final old in dir.listSync().whereType<File>()) {
+      if (old.path.split('/').last.startsWith('jam-in-')) {
+        try {
+          old.deleteSync();
+        } catch (_) {}
+      }
+    }
+    final file = File(
+      '${dir.path}/jam-in-${DateTime.now().millisecondsSinceEpoch}.mp3',
+    );
+    final res = await http.Client()
+        .send(http.Request('GET', Uri.parse(url)))
+        .timeout(const Duration(seconds: 30));
+    if (res.statusCode != 200) throw JamError('HTTP ${res.statusCode}');
+    await res.stream.pipe(file.openWrite()).timeout(const Duration(minutes: 3));
+    return file;
+  }
+
   void _stopFollowing() {
     _followTimer?.cancel();
     _followTimer = null;
@@ -624,6 +717,8 @@ class JamController extends ChangeNotifier {
     }
     _followingId = null;
     listenHere = false;
+    followStatus = null;
+    followFailed = false;
   }
 
   // ---- Adding songs as a guest ---------------------------------------------
@@ -748,6 +843,8 @@ class JamController extends ChangeNotifier {
     _artCache.clear();
     _links.clear();
     _libraryLink = null;
+    _retryShare?.cancel();
+    shareError = null;
     // Friends' songs stay until the next Jam, so the queue keeps playing.
     await h?.stop(deleteUploads: false);
   }

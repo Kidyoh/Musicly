@@ -104,32 +104,88 @@ class NtfyRelay {
   void close() => _client.close();
 }
 
-/// Litterbox (by catbox.moe), a free temporary file host: songs in an
-/// online Jam are uploaded there as unlisted links that delete themselves.
+/// Free temporary file hosts: songs in an online Jam are uploaded as
+/// unlisted links that delete themselves. Litterbox (by catbox.moe) is tried
+/// first, then tmpfiles.org if Litterbox can't be reached.
 abstract final class FileDrop {
   static String endpoint = const String.fromEnvironment(
     'JAM_FILES',
     defaultValue: 'https://litterbox.catbox.moe/resources/internals/api.php',
   );
+  static String fallback = const String.fromEnvironment(
+    'JAM_FILES_2',
+    defaultValue: 'https://tmpfiles.org/api/v1/upload',
+  );
 
-  /// Whether [url] is a song link we accept: https, or the configured host.
+  /// How long Litterbox keeps links (1h, 12h, 24h or 72h).
+  static const keep = '12h';
+
+  /// Whether [url] is a song link we accept: https, or a configured host.
   static bool isLink(String? url) {
     if (url == null) return false;
     if (url.startsWith('https://')) return true;
-    final host = Uri.parse(endpoint);
-    return url.startsWith('${host.scheme}://${host.authority}/');
+    for (final e in [endpoint, fallback]) {
+      final host = Uri.parse(e);
+      if (url.startsWith('${host.scheme}://${host.authority}/')) return true;
+    }
+    return false;
   }
 
-  /// How long links last: 1h, 12h, 24h or 72h.
-  static const keep = '12h';
-
-  /// Uploads [bytes] (or the file at [file]) and returns its link.
-  static Future<String> upload({
+  /// Uploads [bytes] (or the file at [file]); returns the link and how long
+  /// it lasts.
+  static Future<(String, Duration)> upload({
     File? file,
     List<int>? bytes,
     required String name,
     void Function(double done)? onProgress,
   }) async {
+    final problems = <String>[];
+    try {
+      final url = await _post(
+        endpoint,
+        {'reqtype': 'fileupload', 'time': keep},
+        'fileToUpload',
+        file,
+        bytes,
+        name,
+        onProgress,
+      );
+      final link = url.trim();
+      if (!isLink(link)) throw JamError('unexpected reply');
+      return (link, const Duration(hours: 12));
+    } catch (e) {
+      problems.add('Litterbox: $e');
+    }
+    try {
+      final body = await _post(
+        fallback,
+        const {},
+        'file',
+        file,
+        bytes,
+        name,
+        onProgress,
+      );
+      final page = ((jsonDecode(body) as Map)['data'] as Map)['url'] as String;
+      // The page link shows a download page; /dl/ is the file itself.
+      final u = Uri.parse(page);
+      final link = u.replace(pathSegments: ['dl', ...u.pathSegments]);
+      return (link.toString(), const Duration(minutes: 60));
+    } catch (e) {
+      problems.add('tmpfiles: $e');
+    }
+    throw JamError('Could not share the song (${problems.join('; ')})');
+  }
+
+  static Future<String> _post(
+    String url,
+    Map<String, String> fields,
+    String field,
+    File? file,
+    List<int>? bytes,
+    String name,
+    void Function(double done)? onProgress,
+  ) async {
     final length = file != null ? await file.length() : bytes!.length;
     var sent = 0;
     final body = (file != null ? file.openRead() : Stream.value(bytes!)).map((
@@ -139,19 +195,14 @@ abstract final class FileDrop {
       onProgress?.call(length == 0 ? 1 : sent / length);
       return chunk;
     });
-    final req = http.MultipartRequest('POST', Uri.parse(endpoint))
-      ..fields['reqtype'] = 'fileupload'
-      ..fields['time'] = keep
-      ..files.add(
-        http.MultipartFile('fileToUpload', body, length, filename: name),
-      );
+    final req = http.MultipartRequest('POST', Uri.parse(url))
+      ..headers['User-Agent'] = 'Musicly/1.4 (Flutter)'
+      ..fields.addAll(fields)
+      ..files.add(http.MultipartFile(field, body, length, filename: name));
     final res = await http.Response.fromStream(await req.send())
         .timeout(const Duration(minutes: 5));
-    final url = res.body.trim();
-    if (res.statusCode != 200 || !isLink(url)) {
-      throw const JamError('Could not share the song. Try again.');
-    }
-    return url;
+    if (res.statusCode != 200) throw JamError('HTTP ${res.statusCode}');
+    return res.body;
   }
 }
 
@@ -524,10 +575,10 @@ class OnlineJamGuest implements JamSession {
     String? artUrl;
     if (art != null && art.isNotEmpty) {
       try {
-        artUrl = await FileDrop.upload(bytes: art, name: 'cover.jpg');
+        artUrl = (await FileDrop.upload(bytes: art, name: 'cover.jpg')).$1;
       } catch (_) {}
     }
-    final url = await FileDrop.upload(
+    final (url, _) = await FileDrop.upload(
       file: audio,
       name: 'song.$ext',
       onProgress: onProgress,

@@ -467,6 +467,42 @@ class PlayerController extends ChangeNotifier {
     }
   }
 
+  /// Plays one Jam song from [position], starting it only if [playing].
+  /// Returns an error message, or null once the song has loaded.
+  Future<String?> playJam(
+    Track t,
+    Duration position, {
+    required bool playing,
+  }) async {
+    queue = [t];
+    currentIndex = 0;
+    _retries = 0;
+    playError = null;
+    nowOnAir = null;
+    notifyListeners();
+    try {
+      if (shuffle) {
+        shuffle = false;
+        await player.setShuffleModeEnabled(false);
+      }
+      await player
+          .setAudioSources(
+            [_sourceFor(t)],
+            initialIndex: 0,
+            initialPosition: position,
+          )
+          .timeout(const Duration(seconds: 25));
+      unawaited(_applyEffects());
+      // play() only completes when playback stops, so don't wait for it.
+      if (playing) unawaited(player.play());
+      return null;
+    } catch (e) {
+      playError = 'Could not play this song';
+      notifyListeners();
+      return '$e';
+    }
+  }
+
   Future<void> playShuffled(List<Track> tracks) =>
       playQueue(tracks, 0, shuffled: true);
 
