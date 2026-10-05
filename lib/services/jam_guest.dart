@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'jam_protocol.dart';
+import 'jam_session.dart';
 
 /// A Jam another phone on this Wi-Fi is hosting.
 class JamFound {
@@ -23,16 +24,20 @@ class JamFound {
   String get key => '$address:$port';
 }
 
-/// The guest side of a Jam: one WebSocket to the host's phone.
-class JamGuest {
+/// The guest side of a Jam in the same room: one WebSocket to the host's
+/// phone.
+class JamGuest implements JamSession {
   JamGuest(this.address, this.port);
   final String address;
   final int port;
 
   WebSocket? _ws;
   String? guestId;
+  @override
   String jamName = 'Jam';
+  @override
   String hostName = 'Host';
+  @override
   JamState state = const JamState();
 
   /// Host clock minus this phone's clock, in ms.
@@ -43,10 +48,11 @@ class JamGuest {
   int _rid = 0;
   Timer? _pinger;
 
+  @override
   Stream<JamState> get states => _states.stream;
 
-  /// Why the Jam ended for us: 'ended', 'removed' or 'lost'.
   final _closed = Completer<String>();
+  @override
   Future<String> get closed => _closed.future;
 
   /// Listens for Jam beacons on the Wi-Fi. Cancel the subscription to stop.
@@ -97,9 +103,9 @@ class JamGuest {
     queryParameters: q,
   );
 
-  /// Cover image link for a song in the Jam.
-  String artUrl(String trackId) =>
-      _http('/art/${Uri.encodeComponent(trackId)}').toString();
+  @override
+  String? artFor(JamTrack t) =>
+      t.hasArt ? _http('/art/${Uri.encodeComponent(t.id)}').toString() : null;
 
   /// Connects and waits for the host's welcome.
   Future<void> join(String myName) async {
@@ -169,7 +175,8 @@ class JamGuest {
   void _ping() =>
       _send({'t': 'ping', 'c': DateTime.now().millisecondsSinceEpoch});
 
-  /// Where the host's song is right now, worked out from the last update.
+  /// Worked out from the last update and the clock difference.
+  @override
   Duration get position {
     var ms = state.positionMs;
     if (state.playing) {
@@ -180,6 +187,7 @@ class JamGuest {
     return Duration(milliseconds: ms < 0 ? 0 : ms);
   }
 
+  @override
   Future<List<JamTrack>> search(String query) {
     final id = ++_rid;
     final c = Completer<List<JamTrack>>();
@@ -194,14 +202,17 @@ class JamGuest {
     );
   }
 
+  @override
   void add(String trackId, {bool next = false}) =>
       _send({'t': 'add', 'ref': trackId, 'next': next});
 
+  @override
   void control(String action, [int? ms]) =>
       _send({'t': 'ctl', 'a': action, 'ms': ?ms});
 
-  /// Sends one of this phone's songs to the host and adds it to the Jam.
-  Future<void> upload({
+  /// Uploads the song to the host's phone.
+  @override
+  Future<void> sendSong({
     required File audio,
     required String ext,
     required String title,
@@ -258,16 +269,10 @@ class JamGuest {
     }
   }
 
+  @override
   Future<void> leave() async {
     _finish('left');
     await _ws?.close();
     await _states.close();
   }
-}
-
-class JamError implements Exception {
-  const JamError(this.message);
-  final String message;
-  @override
-  String toString() => message;
 }

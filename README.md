@@ -16,9 +16,14 @@ A monochrome, Material 3 music player for Android, iOS and web, built with Flutt
 
 ## Features
 
-- **Jam**: listen together in the same room. One phone hosts and plays; friends on the same Wi-Fi
-  (or the host's hotspot) join from Musicly, see what's playing and add songs from the host's
-  library or their own phone. The host can let friends control playback.
+- **Jam**: listen together.
+  - *In the same room*: one phone hosts and plays; friends on the same Wi-Fi (or the host's hotspot)
+    join from Musicly, see what's playing and add songs from the host's library or their own phone.
+  - *Online, from anywhere*: friends enter the host's code and hear the host's songs on their own
+    phones, in step. Messages go through the free [ntfy.sh](https://ntfy.sh) relay; songs are shared
+    as temporary links on [Litterbox](https://litterbox.catbox.moe) that delete themselves within
+    12 hours. No account or server of our own.
+  - The host can let friends control playback and can remove people.
 - **Your mix**: a fresh blend of your channel and phone songs, weighted toward what you like and play
 - **Hotlist**: your most played songs, and the most popular radio stations
 - **Artist pages** built from your own music; **your playlists** with drag to reorder

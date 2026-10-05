@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:musicly/services/jam_guest.dart';
 import 'package:musicly/services/jam_host.dart';
 import 'package:musicly/services/jam_protocol.dart';
+import 'package:musicly/services/jam_session.dart';
 
 void main() {
   test('join codes round-trip and reject junk', () {
@@ -46,19 +47,21 @@ void main() {
         jamName: "Kidyoh's Jam",
         hostName: 'Kidyoh',
         uploadsDir: Directory('${dir.path}/up'),
-        state: () => JamState(
-          now: now,
-          playing: true,
-          positionMs: 1000,
-          at: DateTime.now().millisecondsSinceEpoch,
+        app: JamHostCallbacks(
+          state: () => JamState(
+            now: now,
+            playing: true,
+            positionMs: 1000,
+            at: DateTime.now().millisecondsSinceEpoch,
+          ),
+          onAdd: (id, by, next) async => added.add((id, by.name, next)),
+          onUpload: (song, by, next) async => uploads.add((song, by.name)),
+          onControl: (a, ms, by) => controls.add((a, ms)),
+          search: (q) => songs
+              .where((t) => t.title.toLowerCase().contains(q.toLowerCase()))
+              .toList(),
+          art: (id) async => id == 'tg:a' ? [1, 2, 3] : null,
         ),
-        onAdd: (id, by, next) async => added.add((id, by.name, next)),
-        onUpload: (song, by, next) async => uploads.add((song, by.name)),
-        onControl: (a, ms, by) => controls.add((a, ms)),
-        search: (q) => songs
-            .where((t) => t.title.toLowerCase().contains(q.toLowerCase()))
-            .toList(),
-        art: (id) async => id == 'tg:a' ? [1, 2, 3] : null,
       );
       await host.start(beacon: false);
     });
@@ -105,7 +108,7 @@ void main() {
       final song = File('${dir.path}/song.mp3')
         ..writeAsBytesSync(List.generate(300000, (i) => i % 256));
       var progress = 0.0;
-      await g.upload(
+      await g.sendSong(
         audio: song,
         ext: 'mp3',
         title: 'My Song',
@@ -121,8 +124,8 @@ void main() {
       expect(by, 'Abel');
       expect(up.title, 'My Song');
       expect(up.durationMs, 180000);
-      expect(File(up.path).lengthSync(), 300000);
-      expect(File(up.artPath!).readAsBytesSync(), [9, 9, 9]);
+      expect(File(up.source).lengthSync(), 300000);
+      expect(File(up.art!).readAsBytesSync(), [9, 9, 9]);
       await g.leave();
     });
 

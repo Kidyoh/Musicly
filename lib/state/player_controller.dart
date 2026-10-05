@@ -291,6 +291,10 @@ class PlayerController extends ChangeNotifier {
     final tag = kIsWeb ? null : _mediaItem(t, art: copy);
     if (t.bytes != null) return _BytesSource(t.bytes!, tag: tag);
     if (copy != null) return AudioSource.uri(Uri.parse(copy.uri!), tag: tag);
+    // Jam songs shared online stream from their link.
+    if (t.isJam && (t.uri?.startsWith('http') ?? false)) {
+      return AudioSource.uri(Uri.parse(t.uri!), tag: tag);
+    }
     switch (t.source) {
       case TrackSource.telegram:
         if (kIsWeb) {

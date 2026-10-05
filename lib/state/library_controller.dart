@@ -151,6 +151,7 @@ class LibraryController extends ChangeNotifier {
   // ---- History & recommendations -----------------------------------------
 
   void recordPlay(Track t) {
+    if (t.isJam) return; // only lives for the Jam
     recent.removeWhere((r) => r.id == t.id);
     recent.insert(0, t);
     if (recent.length > 50) recent.removeLast();

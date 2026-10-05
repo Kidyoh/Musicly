@@ -3,78 +3,42 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'jam_protocol.dart';
+import 'jam_session.dart';
 
-/// A friend connected to the Jam.
-class JamGuestInfo {
-  JamGuestInfo(this.id, this.name, this._socket);
-  final String id;
-  final String name;
-  final WebSocket _socket;
-}
-
-/// A song a guest sent from their own phone, saved on the host.
-class JamUpload {
-  JamUpload({
-    required this.path,
-    required this.title,
-    required this.artist,
-    this.artPath,
-    this.durationMs,
-  });
-  final String path;
-  final String? artPath;
-  final String title;
-  final String artist;
-  final int? durationMs;
-}
-
-/// The host side of a Jam: a small web server on this phone that friends'
-/// Musicly apps connect to, plus a beacon so they find it on the Wi-Fi.
+/// The host side of a Jam in the same room: a small web server on this
+/// phone that friends' Musicly apps connect to, plus a beacon so they find
+/// it on the Wi-Fi.
 ///
 /// It knows nothing about playback; the callbacks connect it to the player.
-class JamHost {
+class JamHost implements JamHosting {
   JamHost({
     required this.jamName,
     required this.hostName,
     required this.uploadsDir,
-    required this.state,
-    required this.onAdd,
-    required this.onUpload,
-    required this.onControl,
-    required this.search,
-    required this.art,
+    required this.app,
   });
 
   final String jamName;
   final String hostName;
   final Directory uploadsDir;
+  final JamHostCallbacks app;
 
-  /// The Jam right now (people are filled in here).
-  final JamState Function() state;
+  bool _guestsControl = false;
+  @override
+  set guestsControl(bool on) => _guestsControl = on;
 
-  /// A guest picked one of the host's songs (by track id).
-  final Future<void> Function(String trackId, JamGuestInfo by, bool next) onAdd;
-
-  /// A guest sent a song from their phone.
-  final Future<void> Function(JamUpload song, JamGuestInfo by, bool next)
-  onUpload;
-
-  /// toggle, next, previous or seek (with [ms]); only when guests may control.
-  final void Function(String action, int? ms, JamGuestInfo by) onControl;
-
-  /// The host's songs matching [query] (all/recent when empty).
-  final List<JamTrack> Function(String query) search;
-
-  /// Cover image bytes for a track id.
-  final Future<List<int>?> Function(String trackId) art;
-
-  bool guestsControl = false;
-  void Function()? onPeopleChanged;
+  void Function()? _onPeopleChanged;
+  @override
+  set onPeopleChanged(void Function()? f) => _onPeopleChanged = f;
 
   HttpServer? _server;
   RawDatagramSocket? _beaconSocket;
   Timer? _beacon;
-  final Map<String, JamGuestInfo> guests = {};
+  final Map<String, JamPerson> _guests = {};
+  final Map<String, WebSocket> _sockets = {};
+
+  @override
+  List<JamPerson> get guests => _guests.values.toList();
   final Map<String, String> _pendingUploads = {}; // upload id -> audio path
   final Map<String, String> _pendingArt = {}; // upload id -> art path
   int _seq = 0;
@@ -110,14 +74,16 @@ class JamHost {
     if (beacon) await _startBeacon();
   }
 
+  @override
   Future<void> stop({bool deleteUploads = true}) async {
     _beacon?.cancel();
     _beaconSocket?.close();
-    for (final g in guests.values.toList()) {
+    for (final g in guests) {
       _send(g, jsonEncode({'t': 'bye', 'reason': 'ended'}));
-      await g._socket.close();
+      await _sockets[g.id]?.close();
     }
-    guests.clear();
+    _guests.clear();
+    _sockets.clear();
     await _server?.close(force: true);
     _server = null;
     if (!deleteUploads) return;
@@ -126,33 +92,35 @@ class JamHost {
     } catch (_) {}
   }
 
-  /// Sends the current Jam to every guest.
   /// Sends to one guest; a guest who just left is skipped quietly.
-  static void _send(JamGuestInfo g, String msg) {
+  void _send(JamPerson g, String msg) {
     try {
-      g._socket.add(msg);
+      _sockets[g.id]?.add(msg);
     } catch (_) {}
   }
 
+  /// Sends the current Jam to every guest.
+  @override
   void pushState() {
-    if (guests.isEmpty) return;
+    if (_guests.isEmpty) return;
     final msg = jsonEncode(_stateWithPeople().toJson());
-    for (final g in guests.values) {
+    for (final g in guests) {
       _send(g, msg);
     }
   }
 
+  @override
   void remove(String guestId) {
-    final g = guests.remove(guestId);
+    final g = _guests.remove(guestId);
     if (g == null) return;
     _send(g, jsonEncode({'t': 'bye', 'reason': 'removed'}));
-    g._socket.close();
-    onPeopleChanged?.call();
+    _sockets.remove(guestId)?.close();
+    _onPeopleChanged?.call();
     pushState();
   }
 
   JamState _stateWithPeople() =>
-      state().copyWith(people: [hostName, ...guests.values.map((g) => g.name)]);
+      app.state().copyWith(people: [hostName, ...guests.map((g) => g.name)]);
 
   // ---- Beacon ------------------------------------------------------------
 
@@ -176,7 +144,7 @@ class JamHost {
         'name': jamName,
         'host': hostName,
         'port': port,
-        'people': guests.length + 1,
+        'people': _guests.length + 1,
       }),
     );
     final targets = {InternetAddress('255.255.255.255')};
@@ -234,12 +202,12 @@ class JamHost {
     final name = (req.uri.queryParameters['name'] ?? 'Guest').trim();
     final ws = await WebSocketTransformer.upgrade(req);
     ws.pingInterval = const Duration(seconds: 10);
-    final g = JamGuestInfo(
+    final g = JamPerson(
       '${DateTime.now().microsecondsSinceEpoch}-${_seq++}',
       name.isEmpty ? 'Guest' : name.substring(0, name.length.clamp(0, 30)),
-      ws,
     );
-    guests[g.id] = g;
+    _guests[g.id] = g;
+    _sockets[g.id] = ws;
     ws.add(
       jsonEncode({
         't': 'welcome',
@@ -248,13 +216,14 @@ class JamHost {
         'you': g.id,
       }),
     );
-    onPeopleChanged?.call();
+    _onPeopleChanged?.call();
     pushState();
     ws.listen(
       (raw) => _message(g, raw),
       onDone: () {
-        if (guests.remove(g.id) != null) {
-          onPeopleChanged?.call();
+        _sockets.remove(g.id);
+        if (_guests.remove(g.id) != null) {
+          _onPeopleChanged?.call();
           pushState();
         }
       },
@@ -263,7 +232,7 @@ class JamHost {
     );
   }
 
-  Future<void> _message(JamGuestInfo g, Object? raw) async {
+  Future<void> _message(JamPerson g, Object? raw) async {
     if (raw is! String) return;
     final Map m;
     try {
@@ -287,22 +256,23 @@ class JamHost {
           jsonEncode({
             't': 'results',
             'rid': m['rid'],
-            'items': search('${m['q'] ?? ''}')
+            'items': app
+                .search('${m['q'] ?? ''}')
                 .take(80)
                 .map((t) => t.toJson())
                 .toList(),
           }),
         );
       case 'add':
-        await onAdd('${m['ref']}', g, m['next'] == true);
+        await app.onAdd('${m['ref']}', g, m['next'] == true);
       case 'addUpload':
         final id = '${m['upload']}';
         final audio = _pendingUploads.remove(id);
         if (audio == null) return;
-        await onUpload(
+        await app.onUpload(
           JamUpload(
-            path: audio,
-            artPath: _pendingArt.remove(id),
+            source: audio,
+            art: _pendingArt.remove(id),
             title: (m['title'] as String?) ?? 'Unknown',
             artist: (m['artist'] as String?) ?? 'Unknown artist',
             durationMs: (m['dur'] as num?)?.toInt(),
@@ -311,14 +281,14 @@ class JamHost {
           m['next'] == true,
         );
       case 'ctl':
-        if (guestsControl) {
-          onControl('${m['a']}', (m['ms'] as num?)?.toInt(), g);
+        if (_guestsControl) {
+          app.onControl('${m['a']}', (m['ms'] as num?)?.toInt(), g);
         }
     }
   }
 
   Future<void> _art(HttpRequest req, String id) async {
-    final bytes = await art(Uri.decodeComponent(id));
+    final bytes = await app.art(Uri.decodeComponent(id));
     if (bytes == null) {
       req.response.statusCode = 404;
     } else {
@@ -336,7 +306,7 @@ class JamHost {
     final id = (q['id'] ?? '').replaceAll(RegExp(r'[^\w-]'), '');
     final kind = q['kind'] == 'art' ? 'art' : 'audio';
     final ext = (q['ext'] ?? 'mp3').replaceAll(RegExp(r'[^\w]'), '');
-    if (req.method != 'POST' || !guests.containsKey(q['g']) || id.isEmpty) {
+    if (req.method != 'POST' || !_guests.containsKey(q['g']) || id.isEmpty) {
       req.response.statusCode = 403;
       await req.response.close();
       return;

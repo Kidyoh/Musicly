@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../models/track.dart';
@@ -13,7 +14,7 @@ import 'sheets.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
-/// Listen together in the same room: start a Jam, or join one nearby.
+/// Listen together: start a Jam (in this room or online), or join one.
 class JamScreen extends StatelessWidget {
   const JamScreen({super.key});
 
@@ -194,7 +195,7 @@ class _StartState extends State<_Start> {
         _title('Jam'),
         const SizedBox(height: 6),
         Text(
-          'Listen together in the same room. One phone plays the music, and everyone adds songs from their own phone.',
+          'Listen together — in the same room or from anywhere. Everyone adds songs, and the music stays in step.',
           style: TextStyle(color: p.sub, height: 1.45),
         ),
         const SizedBox(height: 18),
@@ -223,10 +224,14 @@ class _StartState extends State<_Start> {
           label: _busy ? 'Starting…' : 'Start a Jam',
           onPressed: _busy
               ? null
-              : () => _run(() async {
-                  final ok = await jam.startHosting();
-                  return ok ? null : jam.error;
-                }),
+              : () async {
+                  final online = await _pickMode(context);
+                  if (online == null) return;
+                  await _run(() async {
+                    final ok = await jam.startHosting(online: online);
+                    return ok ? null : jam.error;
+                  });
+                },
         ),
         const SizedBox(height: 32),
         const Text(
@@ -296,7 +301,10 @@ class _StartState extends State<_Start> {
             ),
           ),
         const SizedBox(height: 16),
-        Text('Have a code?', style: TextStyle(color: p.sub)),
+        Text(
+          'Have a code? Online Jams work from anywhere.',
+          style: TextStyle(color: p.sub),
+        ),
         const SizedBox(height: 8),
         Row(
           children: [
@@ -306,7 +314,7 @@ class _StartState extends State<_Start> {
                 textCapitalization: TextCapitalization.characters,
                 autocorrect: false,
                 decoration: const InputDecoration(
-                  hintText: 'ABCD-EFGH-JK',
+                  hintText: 'Jam code',
                   prefixIcon: Icon(AppIcons.link, size: 20),
                 ),
                 onSubmitted: (v) => _run(() => jam.joinWithCode(v)),
@@ -364,13 +372,50 @@ class _Hosting extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Icon(AppIcons.wifi, size: 18, color: p.sub),
+                  Icon(
+                    jam.online ? AppIcons.broadcast : AppIcons.wifi,
+                    size: 18,
+                    color: p.sub,
+                  ),
                   const SizedBox(width: 8),
-                  Text('Invite friends', style: TextStyle(color: p.sub)),
+                  Expanded(
+                    child: Text(
+                      jam.online ? 'Online Jam' : 'Invite friends',
+                      style: TextStyle(color: p.sub),
+                    ),
+                  ),
+                  if (jam.online && jam.joinCode != null)
+                    TextButton.icon(
+                      icon: const Icon(AppIcons.link, size: 16),
+                      label: const Text('Copy invite'),
+                      onPressed: () {
+                        Clipboard.setData(
+                          ClipboardData(
+                            text:
+                                'Join my Jam on Musicly: open Jam, tap "Have a code?" and enter ${jam.joinCode}',
+                          ),
+                        );
+                        toast(context, 'Invite copied — paste it in a chat');
+                      },
+                    ),
                 ],
               ),
               const SizedBox(height: 8),
-              if (jam.joinCode != null) ...[
+              if (jam.online && jam.joinCode != null) ...[
+                SelectableText(
+                  jam.joinCode!,
+                  style: const TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Friends anywhere open Jam in Musicly and enter this code. They hear your songs on their own phones, in step with you.',
+                  style: TextStyle(color: p.sub, height: 1.4),
+                ),
+              ] else if (jam.joinCode != null) ...[
                 SelectableText(
                   jam.joinCode!,
                   style: const TextStyle(
@@ -392,6 +437,29 @@ class _Hosting extends StatelessWidget {
             ],
           ),
         ),
+        if (jam.online) ...[
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              if (jam.sharingTitle != null) ...[
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Expanded(
+                child: Text(
+                  jam.sharingTitle != null
+                      ? 'Sharing ${jam.sharingTitle} with friends…'
+                      : 'Songs are shared as private links that delete themselves within 12 hours.',
+                  style: TextStyle(color: p.sub, fontSize: 12, height: 1.4),
+                ),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: 18),
         Wrap(
           spacing: 8,
@@ -547,7 +615,7 @@ class _JoinedState extends State<_Joined> {
         _title(jam.jamName),
         const SizedBox(height: 4),
         Text(
-          'Hosted by ${jam.hostName} · ${count(s.people.length, 'person', 'people')}',
+          '${jam.online ? 'Online · ' : ''}Hosted by ${jam.hostName} · ${count(s.people.length, 'person', 'people')}',
           style: TextStyle(color: p.sub),
         ),
         const SizedBox(height: 12),
@@ -632,7 +700,7 @@ class _JoinedState extends State<_Joined> {
                 ),
               ],
             )
-          else
+          else if (!jam.online)
             Text(
               s.playing
                   ? 'Playing on ${jam.hostName}\'s phone'
@@ -640,6 +708,26 @@ class _JoinedState extends State<_Joined> {
               textAlign: TextAlign.center,
               style: TextStyle(color: p.sub, fontSize: 13),
             ),
+          if (jam.waitingForSong)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                '${jam.hostName} is sharing this song…',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: p.sub, fontSize: 13),
+              ),
+            ),
+        ],
+        if (jam.online) ...[
+          const SizedBox(height: 10),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            secondary: const Icon(AppIcons.headphones),
+            title: const Text('Listen on this phone'),
+            subtitle: const Text('In step with the host'),
+            value: jam.listenHere,
+            onChanged: jam.setListenHere,
+          ),
         ],
         const SizedBox(height: 22),
         PillButton(
@@ -764,7 +852,9 @@ class _AddSongsState extends State<_AddSongs> {
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
-                      'Your song is sent to ${jam.hostName}\'s phone and added to the queue.',
+                      jam.online
+                          ? 'Your song is shared as a private link and added to the queue.'
+                          : 'Your song is sent to ${jam.hostName}\'s phone and added to the queue.',
                       style: TextStyle(color: p.sub, fontSize: 12),
                     ),
                   ),
@@ -893,3 +983,47 @@ class _PickRow extends StatelessWidget {
     );
   }
 }
+
+/// "In this room" or "Online"; null if the sheet was dismissed.
+Future<bool?> _pickMode(BuildContext context) => showModalBottomSheet<bool>(
+  context: context,
+  useRootNavigator: true,
+  builder: (ctx) => SafeArea(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const ListTile(
+            title: Text(
+              'Where are your friends?',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(AppIcons.wifi),
+            title: const Text(
+              'In this room',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: const Text(
+              'Same Wi-Fi or your hotspot. Music plays from your phone; no internet needed.',
+            ),
+            onTap: () => Navigator.pop(ctx, false),
+          ),
+          ListTile(
+            leading: const Icon(AppIcons.broadcast),
+            title: const Text(
+              'Online — anywhere',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: const Text(
+              'Friends hear your songs on their own phones, in step. Uses internet data.',
+            ),
+            onTap: () => Navigator.pop(ctx, true),
+          ),
+        ],
+      ),
+    ),
+  ),
+);

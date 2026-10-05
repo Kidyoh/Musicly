@@ -4,6 +4,8 @@
 /// and find it through a broadcast "beacon" on [beaconPort].
 library;
 
+import 'dart:math';
+
 const beaconPort = 47474;
 const beaconTag = 'musicly-jam';
 
@@ -16,6 +18,8 @@ class JamTrack {
     this.durationMs,
     this.by,
     this.hasArt = false,
+    this.url,
+    this.artUrl,
   });
 
   final String id;
@@ -27,6 +31,10 @@ class JamTrack {
   final String? by;
   final bool hasArt;
 
+  /// Online Jams: where the song and its cover can be downloaded.
+  final String? url;
+  final String? artUrl;
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'title': title,
@@ -34,6 +42,8 @@ class JamTrack {
     if (durationMs != null) 'dur': durationMs,
     if (by != null) 'by': by,
     if (hasArt) 'art': true,
+    if (url != null) 'url': url,
+    if (artUrl != null) 'artUrl': artUrl,
   };
 
   static JamTrack fromJson(Map j) => JamTrack(
@@ -43,6 +53,8 @@ class JamTrack {
     durationMs: (j['dur'] as num?)?.toInt(),
     by: j['by'] as String?,
     hasArt: j['art'] == true,
+    url: j['url'] as String?,
+    artUrl: j['artUrl'] as String?,
   );
 }
 
@@ -57,6 +69,7 @@ class JamState {
     this.people = const [],
     this.guestsControl = false,
     this.event,
+    this.library,
   });
 
   final JamTrack? now;
@@ -74,6 +87,9 @@ class JamState {
   /// The latest thing that happened, e.g. "Abel added Blinding Lights".
   final String? event;
 
+  /// Online Jams: link to the host's song list, for friends to browse.
+  final String? library;
+
   Map<String, dynamic> toJson() => {
     't': 'state',
     if (now != null) 'now': now!.toJson(),
@@ -84,6 +100,7 @@ class JamState {
     'people': people,
     'control': guestsControl,
     if (event != null) 'event': event,
+    if (library != null) 'lib': library,
   };
 
   static JamState fromJson(Map j) => JamState(
@@ -95,17 +112,19 @@ class JamState {
     people: [for (final p in (j['people'] as List?) ?? []) '$p'],
     guestsControl: j['control'] == true,
     event: j['event'] as String?,
+    library: j['lib'] as String?,
   );
 
-  JamState copyWith({List<String>? people}) => JamState(
+  JamState copyWith({List<String>? people, List<JamTrack>? queue}) => JamState(
     now: now,
     playing: playing,
     positionMs: positionMs,
     at: at,
-    queue: queue,
+    queue: queue ?? this.queue,
     people: people ?? this.people,
     guestsControl: guestsControl,
     event: event,
+    library: library,
   );
 }
 
@@ -153,4 +172,30 @@ abstract final class JamCode {
     ].join('.');
     return (ip, port);
   }
+}
+
+/// Codes for online Jams: 12 random letters and digits, e.g.
+/// "K7QM-2XRB-9TFA". They name the Jam's channel on the relay, so they're
+/// long enough that nobody stumbles onto it.
+abstract final class OnlineJamCode {
+  static const _abc = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+
+  static String create() {
+    final r = Random.secure();
+    final s = List.generate(12, (_) => _abc[r.nextInt(_abc.length)]).join();
+    return '${s.substring(0, 4)}-${s.substring(4, 8)}-${s.substring(8)}';
+  }
+
+  /// The code in its standard form, or null if it isn't an online code.
+  static String? normalise(String code) {
+    final s = code.toUpperCase().replaceAll(RegExp(r'[\s-]'), '');
+    if (s.length != 12 || s.split('').any((c) => !_abc.contains(c))) {
+      return null;
+    }
+    return '${s.substring(0, 4)}-${s.substring(4, 8)}-${s.substring(8)}';
+  }
+
+  /// The relay channel for a code.
+  static String topic(String code) =>
+      'musicly-jam-${code.replaceAll('-', '').toLowerCase()}';
 }
