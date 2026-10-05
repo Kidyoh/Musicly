@@ -16,16 +16,20 @@ import 'theme.dart';
 import 'widgets.dart';
 
 void openNowPlaying(BuildContext context, {bool lyrics = false}) {
-  Navigator.of(context, rootNavigator: true).push(PageRouteBuilder(
-    transitionDuration: const Duration(milliseconds: 420),
-    reverseTransitionDuration: const Duration(milliseconds: 320),
-    pageBuilder: (_, _, _) => NowPlayingScreen(startOnLyrics: lyrics),
-    transitionsBuilder: (_, anim, _, child) => SlideTransition(
-      position: Tween(begin: const Offset(0, 1), end: Offset.zero)
-          .animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
-      child: child,
+  Navigator.of(context, rootNavigator: true).push(
+    PageRouteBuilder(
+      transitionDuration: const Duration(milliseconds: 420),
+      reverseTransitionDuration: const Duration(milliseconds: 320),
+      pageBuilder: (_, _, _) => NowPlayingScreen(startOnLyrics: lyrics),
+      transitionsBuilder: (_, anim, _, child) => SlideTransition(
+        position: Tween(
+          begin: const Offset(0, 1),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+        child: child,
+      ),
     ),
-  ));
+  );
 }
 
 class NowPlayingScreen extends StatefulWidget {
@@ -59,7 +63,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
       builder: (context, snap) {
         final accent = snap.data;
         return GestureDetector(
-          onVerticalDragUpdate: (d) => setState(() => _dragY = (_dragY + d.delta.dy).clamp(0, 400)),
+          onVerticalDragUpdate: (d) =>
+              setState(() => _dragY = (_dragY + d.delta.dy).clamp(0, 400)),
           onVerticalDragEnd: (d) {
             if (_dragY > 120 || d.velocity.pixelsPerSecond.dy > 900) {
               Navigator.pop(context);
@@ -92,14 +97,26 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                     icon: const Icon(AppIcons.down, size: 24),
                     onPressed: () => Navigator.pop(context),
                   ),
-                  title: Column(children: [
-                    Text(_lyrics ? 'Lyrics' : 'Now Playing'),
-                    if (t.album != null)
-                      Text(t.album!,
+                  title: Column(
+                    children: [
+                      Text(
+                        _lyrics
+                            ? 'Lyrics'
+                            : (t.isRadio ? 'Live radio' : 'Now Playing'),
+                      ),
+                      if (t.album != null)
+                        Text(
+                          t.album!,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 12, color: p.sub, fontWeight: FontWeight.w500)),
-                  ]),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: p.sub,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                    ],
+                  ),
                   actions: [
                     IconButton(
                       tooltip: 'Queue',
@@ -110,113 +127,192 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                 ),
                 body: SafeArea(
                   top: false,
-                  child: LayoutBuilder(builder: (context, box) {
-                    final art = (box.maxWidth - 110).clamp(180.0, 340.0);
-                    return Column(children: [
-                      Expanded(
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 350),
-                          switchInCurve: Curves.easeOutCubic,
-                          transitionBuilder: (child, a) => FadeTransition(
-                            opacity: a,
-                            child: ScaleTransition(scale: Tween(begin: 0.96, end: 1.0).animate(a), child: child),
-                          ),
-                          child: _lyrics
-                              ? const Padding(
-                                  key: ValueKey('lyrics'),
-                                  padding: EdgeInsets.symmetric(horizontal: 24),
-                                  child: LyricsView(),
-                                )
-                              : GestureDetector(
-                                  key: const ValueKey('art'),
-                                  onTap: () => setState(() => _lyrics = true),
-                                  child: Center(
-                                    child: AnimatedScale(
-                                      scale: c.player.playing ? 1 : 0.92,
-                                      duration: const Duration(milliseconds: 400),
-                                      curve: Curves.easeOutBack,
-                                      child: DecoratedBox(
-                                        decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.circular(26),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: (accent ?? Colors.black).withValues(alpha: dark ? 0.45 : 0.35),
-                                              blurRadius: 48,
-                                              offset: const Offset(0, 22),
+                  child: LayoutBuilder(
+                    builder: (context, box) {
+                      final art = (box.maxWidth - 110).clamp(180.0, 340.0);
+                      return Column(
+                        children: [
+                          Expanded(
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 350),
+                              switchInCurve: Curves.easeOutCubic,
+                              transitionBuilder: (child, a) => FadeTransition(
+                                opacity: a,
+                                child: ScaleTransition(
+                                  scale: Tween(
+                                    begin: 0.96,
+                                    end: 1.0,
+                                  ).animate(a),
+                                  child: child,
+                                ),
+                              ),
+                              child: _lyrics
+                                  ? const Padding(
+                                      key: ValueKey('lyrics'),
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 24,
+                                      ),
+                                      child: LyricsView(),
+                                    )
+                                  : GestureDetector(
+                                      key: const ValueKey('art'),
+                                      onTap: () =>
+                                          setState(() => _lyrics = true),
+                                      child: Center(
+                                        child: AnimatedScale(
+                                          scale: c.player.playing ? 1 : 0.92,
+                                          duration: const Duration(
+                                            milliseconds: 400,
+                                          ),
+                                          curve: Curves.easeOutBack,
+                                          child: DecoratedBox(
+                                            decoration: BoxDecoration(
+                                              borderRadius:
+                                                  BorderRadius.circular(26),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color:
+                                                      (accent ?? Colors.black)
+                                                          .withValues(
+                                                            alpha: dark
+                                                                ? 0.45
+                                                                : 0.35,
+                                                          ),
+                                                  blurRadius: 48,
+                                                  offset: const Offset(0, 22),
+                                                ),
+                                              ],
                                             ),
-                                          ],
+                                            child: t.isRadio
+                                                ? StationArt(
+                                                    t,
+                                                    size: art,
+                                                    radius: 26,
+                                                  )
+                                                : Artwork(
+                                                    t,
+                                                    size: art,
+                                                    radius: 26,
+                                                  ),
+                                          ),
                                         ),
-                                        child: Artwork(t, size: art, radius: 26),
                                       ),
                                     ),
-                                  ),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 28),
+                            child: Column(
+                              children: [
+                                const SizedBox(height: 18),
+                                Row(
+                                  children: [
+                                    IconButton(
+                                      onPressed: () {
+                                        HapticFeedback.lightImpact();
+                                        lib.toggleFavorite(t);
+                                      },
+                                      icon: AnimatedSwitcher(
+                                        duration: const Duration(
+                                          milliseconds: 250,
+                                        ),
+                                        transitionBuilder: (ch, a) =>
+                                            ScaleTransition(
+                                              scale: a,
+                                              child: ch,
+                                            ),
+                                        child: Icon(
+                                          liked
+                                              ? AppIcons.heartOn
+                                              : AppIcons.heart,
+                                          key: ValueKey(liked),
+                                          color: liked
+                                              ? const Color(0xFFE5484D)
+                                              : p.sub,
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Text(
+                                        t.title,
+                                        textAlign: TextAlign.center,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 26,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: -0.6,
+                                        ),
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: Icon(AppIcons.more, color: p.sub),
+                                      onPressed: () =>
+                                          showTrackOptions(context, t),
+                                    ),
+                                  ],
                                 ),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 28),
-                        child: Column(children: [
-                          const SizedBox(height: 18),
-                          Row(children: [
-                            IconButton(
-                              onPressed: () {
-                                HapticFeedback.lightImpact();
-                                lib.toggleFavorite(t);
-                              },
-                              icon: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 250),
-                                transitionBuilder: (ch, a) => ScaleTransition(scale: a, child: ch),
-                                child: Icon(
-                                  liked ? AppIcons.heartOn : AppIcons.heart,
-                                  key: ValueKey(liked),
-                                  color: liked ? const Color(0xFFE5484D) : p.sub,
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Flexible(
+                                      child: GestureDetector(
+                                        onTap: t.artistId == null
+                                            ? null
+                                            : () => openArtist(
+                                                context,
+                                                t.artistId!,
+                                                t.artist,
+                                              ),
+                                        child: Text(
+                                          t.isRadio
+                                              ? (c.nowOnAir ?? t.artist)
+                                              : t.artist,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: p.sub,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    if (t.isPreview) ...[
+                                      const SizedBox(width: 8),
+                                      GestureDetector(
+                                        onTap: t.link == null
+                                            ? null
+                                            : () => launchUrl(
+                                                Uri.parse(t.link!),
+                                                mode: LaunchMode
+                                                    .externalApplication,
+                                              ),
+                                        child: const PreviewBadge(small: false),
+                                      ),
+                                    ],
+                                  ],
                                 ),
-                              ),
+                                const SizedBox(height: 20),
+                                if (t.isRadio)
+                                  LiveBar(onAir: c.nowOnAir)
+                                else
+                                  WaveformSeekBar(trackId: t.id),
+                                const SizedBox(height: 12),
+                                _Controls(c: c),
+                                const SizedBox(height: 16),
+                                _ActionBar(
+                                  lyrics: _lyrics,
+                                  onLyrics: () =>
+                                      setState(() => _lyrics = !_lyrics),
+                                ),
+                                const SizedBox(height: 8),
+                              ],
                             ),
-                            Expanded(
-                              child: Text(t.title,
-                                  textAlign: TextAlign.center,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                      fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: -0.6)),
-                            ),
-                            IconButton(
-                              icon: Icon(AppIcons.more, color: p.sub),
-                              onPressed: () => showTrackOptions(context, t),
-                            ),
-                          ]),
-                          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                            Flexible(
-                              child: GestureDetector(
-                                onTap: t.artistId == null ? null : () => openArtist(context, t.artistId!, t.artist),
-                                child: Text(t.artist,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(color: p.sub, fontSize: 15)),
-                              ),
-                            ),
-                            if (t.isPreview) ...[
-                              const SizedBox(width: 8),
-                              GestureDetector(
-                                onTap: t.link == null
-                                    ? null
-                                    : () => launchUrl(Uri.parse(t.link!), mode: LaunchMode.externalApplication),
-                                child: const PreviewBadge(small: false),
-                              ),
-                            ],
-                          ]),
-                          const SizedBox(height: 20),
-                          WaveformSeekBar(trackId: t.id),
-                          const SizedBox(height: 12),
-                          _Controls(c: c),
-                          const SizedBox(height: 16),
-                          _ActionBar(lyrics: _lyrics, onLyrics: () => setState(() => _lyrics = !_lyrics)),
-                          const SizedBox(height: 8),
-                        ]),
-                      ),
-                    ]);
-                  }),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
@@ -234,60 +330,90 @@ class _Controls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
-    return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-      IconButton(
-        tooltip: 'Shuffle',
-        onPressed: c.toggleShuffle,
-        icon: Icon(AppIcons.shuffle, color: c.shuffle ? p.ink : p.sub),
-      ),
-      IconButton(iconSize: 30, onPressed: c.previous, icon: const Icon(AppIcons.prev)),
-      StreamBuilder<PlayerState>(
-        stream: c.player.playerStateStream,
-        builder: (_, snap) {
-          final s = snap.data;
-          final playing = s?.playing ?? false;
-          final busy = s?.processingState == ProcessingState.loading ||
-              s?.processingState == ProcessingState.buffering;
-          return GestureDetector(
-            onTap: () {
-              HapticFeedback.selectionClick();
-              c.togglePlay();
-            },
-            child: Container(
-              width: 70,
-              height: 70,
-              decoration: BoxDecoration(
-                color: p.ink,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(color: p.ink.withValues(alpha: 0.25), blurRadius: 20, offset: const Offset(0, 8)),
-                ],
-              ),
-              child: Stack(alignment: Alignment.center, children: [
-                if (busy)
-                  SizedBox(
-                    width: 66,
-                    height: 66,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: p.onInk),
-                  ),
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  transitionBuilder: (ch, a) => ScaleTransition(scale: a, child: ch),
-                  child: Icon(playing ? AppIcons.pause : AppIcons.play,
-                      key: ValueKey(playing), color: p.onInk, size: 28),
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        IconButton(
+          tooltip: 'Shuffle',
+          onPressed: c.toggleShuffle,
+          icon: Icon(AppIcons.shuffle, color: c.shuffle ? p.ink : p.sub),
+        ),
+        IconButton(
+          iconSize: 30,
+          onPressed: c.previous,
+          icon: const Icon(AppIcons.prev),
+        ),
+        StreamBuilder<PlayerState>(
+          stream: c.player.playerStateStream,
+          builder: (_, snap) {
+            final s = snap.data;
+            final playing = s?.playing ?? false;
+            final busy =
+                s?.processingState == ProcessingState.loading ||
+                s?.processingState == ProcessingState.buffering;
+            return GestureDetector(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                c.togglePlay();
+              },
+              child: Container(
+                width: 70,
+                height: 70,
+                decoration: BoxDecoration(
+                  color: p.ink,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: p.ink.withValues(alpha: 0.25),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
                 ),
-              ]),
-            ),
-          );
-        },
-      ),
-      IconButton(iconSize: 30, onPressed: c.next, icon: const Icon(AppIcons.next)),
-      IconButton(
-        tooltip: 'Repeat',
-        onPressed: c.cycleLoop,
-        icon: Icon(repeatIcon(c.loopMode), color: c.loopMode == LoopMode.off ? p.sub : p.ink),
-      ),
-    ]);
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    if (busy)
+                      SizedBox(
+                        width: 66,
+                        height: 66,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: p.onInk,
+                        ),
+                      ),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      transitionBuilder: (ch, a) =>
+                          ScaleTransition(scale: a, child: ch),
+                      child: Icon(
+                        playing ? AppIcons.pause : AppIcons.play,
+                        key: ValueKey(playing),
+                        color: p.onInk,
+                        size: 28,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+        IconButton(
+          iconSize: 30,
+          onPressed: c.next,
+          icon: const Icon(AppIcons.next),
+        ),
+        IconButton(
+          tooltip: 'Repeat',
+          onPressed: c.cycleLoop,
+          icon: Icon(
+            repeatIcon(c.loopMode),
+            color: c.loopMode == LoopMode.off ? p.sub : p.ink,
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -301,47 +427,84 @@ class _ActionBar extends StatelessWidget {
     final c = context.watch<PlayerController>();
     final l = context.watch<LyricsController>();
     final p = Palette.of(context);
-    final synced = l.status == LyricsStatus.found && (l.lyrics?.isSynced ?? false) && l.canSync;
+    final synced =
+        l.status == LyricsStatus.found &&
+        (l.lyrics?.isSynced ?? false) &&
+        l.canSync;
     final soundOn = c.eqEnabled || c.loudnessOn;
 
-    Widget item(IconData icon, String label, VoidCallback onTap, {bool on = false}) => Expanded(
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Icon(icon, size: 22, color: on ? p.ink : p.sub),
-                const SizedBox(height: 4),
-                Text(label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: on ? FontWeight.w700 : FontWeight.w500,
-                        color: on ? p.ink : p.sub)),
-              ]),
-            ),
+    Widget item(
+      IconData icon,
+      String label,
+      VoidCallback onTap, {
+      bool on = false,
+    }) => Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 22, color: on ? p.ink : p.sub),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: on ? FontWeight.w700 : FontWeight.w500,
+                  color: on ? p.ink : p.sub,
+                ),
+              ),
+            ],
           ),
-        );
+        ),
+      ),
+    );
 
     final sleepLabel = c.sleepAtTrackEnd
         ? 'End of song'
         : c.sleepRemaining != null
-            ? '${c.sleepRemaining!.inMinutes + 1} min'
-            : 'Sleep';
+        ? '${c.sleepRemaining!.inMinutes + 1} min'
+        : 'Sleep';
 
     return Container(
-      decoration: BoxDecoration(color: p.card.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(18)),
+      decoration: BoxDecoration(
+        color: p.card.withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(18),
+      ),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      child: Row(children: [
-        item(lyrics ? AppIcons.lyricsOn : AppIcons.lyrics, synced ? 'Lyrics • Live' : 'Lyrics', onLyrics,
-            on: lyrics),
-        item(soundOn ? AppIcons.soundOn : AppIcons.sound, 'Sound', () => showSound(context), on: soundOn),
-        item(c.sleepActive ? AppIcons.sleepOn : AppIcons.sleep, sleepLabel, () => showSleepTimer(context),
-            on: c.sleepActive),
-        item(AppIcons.speed, '${c.speed}x', () => showSpeed(context), on: c.speed != 1.0),
-      ]),
+      child: Row(
+        children: [
+          item(
+            lyrics ? AppIcons.lyricsOn : AppIcons.lyrics,
+            synced ? 'Lyrics • Live' : 'Lyrics',
+            onLyrics,
+            on: lyrics,
+          ),
+          item(
+            soundOn ? AppIcons.soundOn : AppIcons.sound,
+            'Sound',
+            () => showSound(context),
+            on: soundOn,
+          ),
+          item(
+            c.sleepActive ? AppIcons.sleepOn : AppIcons.sleep,
+            sleepLabel,
+            () => showSleepTimer(context),
+            on: c.sleepActive,
+          ),
+          item(
+            AppIcons.speed,
+            '${c.speed}x',
+            () => showSpeed(context),
+            on: c.speed != 1.0,
+          ),
+        ],
+      ),
     );
   }
 }

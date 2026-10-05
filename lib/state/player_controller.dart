@@ -44,12 +44,15 @@ class _PreviewSource extends StreamAudioSource {
   static void seed(int id, String? url) {
     if (url == null) return;
     final exp = previewExpiry(url);
-    if (exp.isAfter(DateTime.now().add(const Duration(seconds: 45)))) _cache[id] = (url, exp);
+    if (exp.isAfter(DateTime.now().add(const Duration(seconds: 45)))) {
+      _cache[id] = (url, exp);
+    }
   }
 
   Future<String> _url() async {
     final hit = _cache[trackId];
-    if (hit != null && hit.$2.isAfter(DateTime.now().add(const Duration(seconds: 45)))) {
+    if (hit != null &&
+        hit.$2.isAfter(DateTime.now().add(const Duration(seconds: 45)))) {
       return hit.$1;
     }
     final url = await api.previewUrl(trackId);
@@ -62,7 +65,8 @@ class _PreviewSource extends StreamAudioSource {
   Future<StreamAudioResponse> request([int? start, int? end]) async {
     final req = http.Request('GET', Uri.parse(await _url()));
     if (start != null || end != null) {
-      req.headers['Range'] = 'bytes=${start ?? 0}-${end == null ? '' : end - 1}';
+      req.headers['Range'] =
+          'bytes=${start ?? 0}-${end == null ? '' : end - 1}';
     }
     final res = await http.Client().send(req);
     if (res.statusCode != 200 && res.statusCode != 206) {
@@ -95,31 +99,40 @@ DateTime previewExpiry(String url) {
       : DateTime.fromMillisecondsSinceEpoch(exp * 1000);
 }
 
-enum EqPreset { flat, bassBoost, vocal, treble, electronic, rock, acoustic, custom }
+enum EqPreset {
+  flat,
+  bassBoost,
+  vocal,
+  treble,
+  electronic,
+  rock,
+  acoustic,
+  custom,
+}
 
 extension EqPresetInfo on EqPreset {
   String get label => switch (this) {
-        EqPreset.flat => 'Flat',
-        EqPreset.bassBoost => 'Bass boost',
-        EqPreset.vocal => 'Vocal',
-        EqPreset.treble => 'Treble',
-        EqPreset.electronic => 'Electronic',
-        EqPreset.rock => 'Rock',
-        EqPreset.acoustic => 'Acoustic',
-        EqPreset.custom => 'Custom',
-      };
+    EqPreset.flat => 'Flat',
+    EqPreset.bassBoost => 'Bass boost',
+    EqPreset.vocal => 'Vocal',
+    EqPreset.treble => 'Treble',
+    EqPreset.electronic => 'Electronic',
+    EqPreset.rock => 'Rock',
+    EqPreset.acoustic => 'Acoustic',
+    EqPreset.custom => 'Custom',
+  };
 
   /// Gains in dB at 60, 230, 910, 3.6k, 14k Hz; resampled to the device's bands.
   List<double> get curve => switch (this) {
-        EqPreset.flat => [0, 0, 0, 0, 0],
-        EqPreset.bassBoost => [7, 4.5, 0, 0, 0],
-        EqPreset.vocal => [-2, 0, 4, 3, 0],
-        EqPreset.treble => [0, 0, 0, 4, 7],
-        EqPreset.electronic => [5, 2, -1, 2, 5],
-        EqPreset.rock => [4, 2, -2, 2, 4],
-        EqPreset.acoustic => [3, 1, 1, 2, 3],
-        EqPreset.custom => [0, 0, 0, 0, 0],
-      };
+    EqPreset.flat => [0, 0, 0, 0, 0],
+    EqPreset.bassBoost => [7, 4.5, 0, 0, 0],
+    EqPreset.vocal => [-2, 0, 4, 3, 0],
+    EqPreset.treble => [0, 0, 0, 4, 7],
+    EqPreset.electronic => [5, 2, -1, 2, 5],
+    EqPreset.rock => [4, 2, -2, 2, 4],
+    EqPreset.acoustic => [3, 1, 1, 2, 3],
+    EqPreset.custom => [0, 0, 0, 0, 0],
+  };
 }
 
 class PlayerController extends ChangeNotifier {
@@ -128,7 +141,9 @@ class PlayerController extends ChangeNotifier {
     equalizer = android ? AndroidEqualizer() : null;
     loudness = android ? AndroidLoudnessEnhancer() : null;
     player = AudioPlayer(
-      audioPipeline: AudioPipeline(androidAudioEffects: [?equalizer, ?loudness]),
+      audioPipeline: AudioPipeline(
+        androidAudioEffects: [?equalizer, ?loudness],
+      ),
     );
     _wire();
     _restoreSettings();
@@ -143,6 +158,9 @@ class PlayerController extends ChangeNotifier {
   void Function(Track t)? onTrackStarted;
 
   String? playError;
+
+  /// "Artist - Song" announced by a live radio stream, when it sends one.
+  String? nowOnAir;
 
   // Playback
   List<Track> queue = [];
@@ -169,8 +187,9 @@ class PlayerController extends ChangeNotifier {
   Duration? get sleepRemaining => _sleepEndsAt?.difference(DateTime.now());
   bool get sleepActive => _sleepEndsAt != null || sleepAtTrackEnd;
 
-  Track? get current =>
-      queue.isEmpty || currentIndex >= queue.length ? null : queue[currentIndex];
+  Track? get current => queue.isEmpty || currentIndex >= queue.length
+      ? null
+      : queue[currentIndex];
 
   void _wire() {
     player.currentIndexStream.listen((i) {
@@ -181,14 +200,25 @@ class PlayerController extends ChangeNotifier {
         player.pause();
       }
       currentIndex = i;
+      if (changed) nowOnAir = null;
       if (changed && current != null) onTrackStarted?.call(current!);
       notifyListeners();
     });
     player.playerStateStream.listen((_) => notifyListeners());
-    player.playbackEventStream.listen(null, onError: (Object e, StackTrace _) {
-      playError = 'Could not play this song';
-      notifyListeners();
+    player.icyMetadataStream.listen((m) {
+      final title = m?.info?.title?.trim();
+      if (title != null && title.isNotEmpty && title != nowOnAir) {
+        nowOnAir = title;
+        notifyListeners();
+      }
     });
+    player.playbackEventStream.listen(
+      null,
+      onError: (Object e, StackTrace _) {
+        playError = 'Could not play this song';
+        notifyListeners();
+      },
+    );
     player.positionStream.listen(_fade);
   }
 
@@ -221,7 +251,10 @@ class PlayerController extends ChangeNotifier {
             title: t.title,
             artist: t.artist,
             album: t.album,
-            duration: t.isPreview ? const Duration(seconds: 30) : t.duration,
+            duration: t.isPreview
+                ? const Duration(seconds: 30)
+                : (t.isRadio ? null : t.duration),
+            extras: t.isRadio ? const {'live': true} : null,
             artUri: t.artworkUrl == null ? null : Uri.parse(t.artworkUrl!),
           );
     if (t.bytes != null) return _BytesSource(t.bytes!, tag: tag);
@@ -232,10 +265,14 @@ class PlayerController extends ChangeNotifier {
         if (kIsWeb) return AudioSource.uri(Uri.parse(t.uri!), tag: tag);
         _PreviewSource.seed(t.deezerId!, t.uri);
         return _PreviewSource(t.deezerId!, api, tag: tag);
+      case TrackSource.audius:
+      case TrackSource.radio:
       case TrackSource.device:
         return AudioSource.uri(Uri.parse(t.uri!), tag: tag);
       case TrackSource.file:
-        return kIsWeb ? AudioSource.uri(Uri.parse(t.uri!), tag: tag) : AudioSource.file(t.uri!, tag: tag);
+        return kIsWeb
+            ? AudioSource.uri(Uri.parse(t.uri!), tag: tag)
+            : AudioSource.file(t.uri!, tag: tag);
     }
   }
 
@@ -251,26 +288,37 @@ class PlayerController extends ChangeNotifier {
           i,
     ];
     for (var k = 0; k < stale.length; k += 8) {
-      await Future.wait(stale.skip(k).take(8).map((i) async {
-        try {
-          out[i] = out[i].withUri(await api.previewUrl(out[i].deezerId!));
-        } catch (_) {}
-      }));
+      await Future.wait(
+        stale.skip(k).take(8).map((i) async {
+          try {
+            out[i] = out[i].withUri(await api.previewUrl(out[i].deezerId!));
+          } catch (_) {}
+        }),
+      );
     }
-    return out.where((t) => t.source != TrackSource.deezer || t.uri != null).toList();
+    return out
+        .where((t) => t.source != TrackSource.deezer || t.uri != null)
+        .toList();
   }
 
-  Future<void> playQueue(List<Track> tracks, int index, {bool shuffled = false}) async {
+  Future<void> playQueue(
+    List<Track> tracks,
+    int index, {
+    bool shuffled = false,
+  }) async {
     if (tracks.isEmpty) return;
     if (kIsWeb) {
       final target = tracks[index].id;
       tracks = await _fresh(tracks);
-      index = tracks.indexWhere((t) => t.id == target).clamp(0, tracks.length - 1);
+      index = tracks
+          .indexWhere((t) => t.id == target)
+          .clamp(0, tracks.length - 1);
       if (tracks.isEmpty) return;
     }
     queue = List.of(tracks);
     currentIndex = index;
     playError = null;
+    nowOnAir = null;
     onTrackStarted?.call(queue[index]);
     notifyListeners();
     try {
@@ -278,7 +326,10 @@ class PlayerController extends ChangeNotifier {
         shuffle = shuffled;
         await player.setShuffleModeEnabled(shuffle);
       }
-      await player.setAudioSources(queue.map(_sourceFor).toList(), initialIndex: index);
+      await player.setAudioSources(
+        queue.map(_sourceFor).toList(),
+        initialIndex: index,
+      );
       if (shuffled) {
         await player.shuffle();
         await player.seek(Duration.zero, index: player.effectiveIndices.first);
@@ -291,9 +342,11 @@ class PlayerController extends ChangeNotifier {
     }
   }
 
-  Future<void> playShuffled(List<Track> tracks) => playQueue(tracks, 0, shuffled: true);
+  Future<void> playShuffled(List<Track> tracks) =>
+      playQueue(tracks, 0, shuffled: true);
 
-  Future<void> togglePlay() async => player.playing ? player.pause() : player.play();
+  Future<void> togglePlay() async =>
+      player.playing ? player.pause() : player.play();
 
   Future<void> next() => player.seekToNext();
 
@@ -410,7 +463,8 @@ class PlayerController extends ChangeNotifier {
     }
   }
 
-  List<double> get activeCurve => eqPreset == EqPreset.custom ? customGains : eqPreset.curve;
+  List<double> get activeCurve =>
+      eqPreset == EqPreset.custom ? customGains : eqPreset.curve;
 
   /// Interpolates a 5-point curve (log-spaced) onto the device's bands.
   static double _curveAt(List<double> curve, double hz) {
@@ -448,7 +502,11 @@ class PlayerController extends ChangeNotifier {
     } catch (_) {}
   }
 
-  Future<void> setEq({bool? enabled, EqPreset? preset, List<double>? custom}) async {
+  Future<void> setEq({
+    bool? enabled,
+    EqPreset? preset,
+    List<double>? custom,
+  }) async {
     if (enabled != null) eqEnabled = enabled;
     if (preset != null) eqPreset = preset;
     if (custom != null) {
@@ -479,23 +537,25 @@ class PlayerController extends ChangeNotifier {
     try {
       final p = await SharedPreferences.getInstance();
       await p.setString(
-          'sound',
-          jsonEncode({
-            'eqEnabled': eqEnabled,
-            'eqPreset': eqPreset.name,
-            'customGains': customGains,
-            'loudnessOn': loudnessOn,
-            'loudnessGain': loudnessGain,
-            'smoothFade': smoothFade,
-            'fadeSeconds': fadeSeconds,
-          }));
+        'sound',
+        jsonEncode({
+          'eqEnabled': eqEnabled,
+          'eqPreset': eqPreset.name,
+          'customGains': customGains,
+          'loudnessOn': loudnessOn,
+          'loudnessGain': loudnessGain,
+          'smoothFade': smoothFade,
+          'fadeSeconds': fadeSeconds,
+        }),
+      );
     } catch (_) {}
   }
 
   Future<void> _restoreSettings() async {
     try {
       final p = await SharedPreferences.getInstance();
-      final j = jsonDecode(p.getString('sound') ?? '{}') as Map<String, dynamic>;
+      final j =
+          jsonDecode(p.getString('sound') ?? '{}') as Map<String, dynamic>;
       eqEnabled = j['eqEnabled'] as bool? ?? false;
       eqPreset = EqPreset.values.asNameMap()[j['eqPreset']] ?? EqPreset.flat;
       customGains = ((j['customGains'] as List?) ?? [0, 0, 0, 0, 0])

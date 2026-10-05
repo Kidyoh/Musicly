@@ -40,11 +40,11 @@ class _ShellState extends State<Shell> {
   }
 
   Widget _root(int i) => switch (i) {
-        0 => HomeScreen(onOpenTab: _select),
-        1 => const SearchScreen(),
-        2 => const LibraryScreen(),
-        _ => const HotlistScreen(),
-      };
+    0 => HomeScreen(onOpenTab: _select),
+    1 => const SearchScreen(),
+    2 => const LibraryScreen(),
+    _ => const HotlistScreen(),
+  };
 
   void _select(int i) {
     if (i == _tab) {
@@ -62,7 +62,8 @@ class _ShellState extends State<Shell> {
     if (c.playError != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(c.playError!)));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(c.playError!)));
         c.playError = null;
       });
     }
@@ -86,60 +87,76 @@ class _ShellState extends State<Shell> {
             for (var i = 0; i < 4; i++)
               Navigator(
                 key: _navKeys[i],
-                onGenerateRoute: (_) => MaterialPageRoute(builder: (_) => _root(i)),
+                onGenerateRoute: (_) =>
+                    MaterialPageRoute(builder: (_) => _root(i)),
               ),
           ],
         ),
         bottomNavigationBar: Container(
           color: p.bg,
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const _MiniPlayer(),
-            Container(
-              decoration: BoxDecoration(
-                color: p.bg,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                boxShadow: [
-                  BoxShadow(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const _MiniPlayer(),
+              Container(
+                decoration: BoxDecoration(
+                  color: p.bg,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(24),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
                       color: Colors.black.withValues(alpha: 0.05),
                       blurRadius: 20,
-                      offset: const Offset(0, -4)),
-                ],
-              ),
-              child: SafeArea(
-                top: false,
-                child: SizedBox(
-                  height: 64,
-                  child: Row(children: [
-                    for (var i = 0; i < _items.length; i++)
-                      Expanded(
-                        child: InkResponse(
-                          onTap: () => _select(i),
-                          radius: 36,
-                          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                            AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 200),
-                              child: Icon(
-                                i == _tab ? _items[i].$2 : _items[i].$1,
-                                key: ValueKey(i == _tab),
-                                size: 24,
-                                color: i == _tab ? p.ink : p.sub,
+                      offset: const Offset(0, -4),
+                    ),
+                  ],
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: SizedBox(
+                    height: 64,
+                    child: Row(
+                      children: [
+                        for (var i = 0; i < _items.length; i++)
+                          Expanded(
+                            child: InkResponse(
+                              onTap: () => _select(i),
+                              radius: 36,
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 200),
+                                    child: Icon(
+                                      i == _tab ? _items[i].$2 : _items[i].$1,
+                                      key: ValueKey(i == _tab),
+                                      size: 24,
+                                      color: i == _tab ? p.ink : p.sub,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _items[i].$3,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: i == _tab
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
+                                      color: i == _tab ? p.ink : p.sub,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            Text(_items[i].$3,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: i == _tab ? FontWeight.w700 : FontWeight.w500,
-                                  color: i == _tab ? p.ink : p.sub,
-                                )),
-                          ]),
-                        ),
-                      ),
-                  ]),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ]),
+            ],
+          ),
         ),
       ),
     );
@@ -174,78 +191,107 @@ class _MiniPlayer extends StatelessWidget {
                 margin: const EdgeInsets.fromLTRB(0, 0, 0, 0),
                 decoration: BoxDecoration(
                   color: p.dock,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(24),
+                  ),
                 ),
                 clipBehavior: Clip.antiAlias,
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  StreamBuilder<Duration>(
-                    stream: c.player.positionStream,
-                    builder: (_, snap) {
-                      final total = c.player.duration?.inMilliseconds ?? 0;
-                      final pos = snap.data?.inMilliseconds ?? 0;
-                      return LinearProgressIndicator(
-                        minHeight: 2,
-                        value: total == 0 ? 0 : (pos / total).clamp(0.0, 1.0),
-                        color: p.onDock,
-                        backgroundColor: Colors.white12,
-                      );
-                    },
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
-                    child: Row(children: [
-                      Artwork(t, size: 46, radius: 23),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 250),
-                          layoutBuilder: (cur, prev) => Stack(
-                            alignment: Alignment.centerLeft,
-                            children: [...prev, ?cur],
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    StreamBuilder<Duration>(
+                      stream: c.player.positionStream,
+                      builder: (_, snap) {
+                        final total = c.player.duration?.inMilliseconds ?? 0;
+                        final pos = snap.data?.inMilliseconds ?? 0;
+                        return LinearProgressIndicator(
+                          minHeight: 2,
+                          value: total == 0 ? 0 : (pos / total).clamp(0.0, 1.0),
+                          color: p.onDock,
+                          backgroundColor: Colors.white12,
+                        );
+                      },
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
+                      child: Row(
+                        children: [
+                          t.isRadio
+                              ? StationArt(t, size: 46, radius: 23)
+                              : Artwork(t, size: 46, radius: 23),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 250),
+                              layoutBuilder: (cur, prev) => Stack(
+                                alignment: Alignment.centerLeft,
+                                children: [...prev, ?cur],
+                              ),
+                              child: Column(
+                                key: ValueKey(t.id),
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    t.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: p.onDock,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    t.isRadio
+                                        ? '● LIVE  ${c.nowOnAir ?? t.artist}'
+                                        : t.artist,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white60,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
-                          child: Column(
-                            key: ValueKey(t.id),
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(t.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                      color: p.onDock, fontWeight: FontWeight.w700, fontSize: 15)),
-                              const SizedBox(height: 2),
-                              Text(t.artist,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(color: Colors.white60, fontSize: 12)),
-                            ],
+                          IconButton(
+                            onPressed: () => lib.toggleFavorite(t),
+                            icon: Icon(
+                              lib.isFavorite(t)
+                                  ? AppIcons.heartOn
+                                  : AppIcons.heart,
+                              color: lib.isFavorite(t)
+                                  ? const Color(0xFFE5484D)
+                                  : p.onDock,
+                            ),
                           ),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => lib.toggleFavorite(t),
-                        icon: Icon(
-                          lib.isFavorite(t) ? AppIcons.heartOn : AppIcons.heart,
-                          color: lib.isFavorite(t) ? const Color(0xFFE5484D) : p.onDock,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      GestureDetector(
-                        onTap: c.togglePlay,
-                        child: Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                              color: Colors.white, borderRadius: BorderRadius.circular(12)),
-                          child: Icon(
-                            c.player.playing ? AppIcons.pause : AppIcons.play,
-                            size: 20,
-                            color: const Color(0xFF1C1D22),
+                          const SizedBox(width: 4),
+                          GestureDetector(
+                            onTap: c.togglePlay,
+                            child: Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(
+                                c.player.playing
+                                    ? AppIcons.pause
+                                    : AppIcons.play,
+                                size: 20,
+                                color: const Color(0xFF1C1D22),
+                              ),
+                            ),
                           ),
-                        ),
+                        ],
                       ),
-                    ]),
-                  ),
-                ]),
+                    ),
+                  ],
+                ),
               ),
             ),
     );

@@ -25,26 +25,32 @@ class Collection {
   final int? year;
 
   String get kindLabel => switch (kind) {
-        CollectionKind.album => 'Album',
-        CollectionKind.playlist => 'Playlist',
-        CollectionKind.chart => 'Chart',
-        CollectionKind.genre => 'Genre',
-        CollectionKind.mix => 'Mix',
-        CollectionKind.user => 'Your playlist',
-      };
+    CollectionKind.album => 'Album',
+    CollectionKind.playlist => 'Playlist',
+    CollectionKind.chart => 'Chart',
+    CollectionKind.genre => 'Genre',
+    CollectionKind.mix => 'Mix',
+    CollectionKind.user => 'Your playlist',
+  };
 
   /// A placeholder track so collection art can reuse the Artwork widget.
   Track get coverTrack => Track(
-        id: id,
-        title: title,
-        artist: owner,
-        source: TrackSource.deezer,
-        artworkUrl: artworkUrl,
-      );
+    id: id,
+    title: title,
+    artist: owner,
+    source: TrackSource.deezer,
+    artworkUrl: artworkUrl,
+  );
 }
 
 class Artist {
-  Artist({required this.id, required this.name, this.pictureUrl, this.fans, this.albums});
+  Artist({
+    required this.id,
+    required this.name,
+    this.pictureUrl,
+    this.fans,
+    this.albums,
+  });
   final String id;
   final String name;
   final String? pictureUrl;
@@ -61,9 +67,13 @@ class Genre {
 
 /// A playlist the user made. Stored on the device.
 class UserPlaylist {
-  UserPlaylist({required this.id, required this.name, List<Track>? tracks, DateTime? created})
-      : tracks = tracks ?? [],
-        created = created ?? DateTime.now();
+  UserPlaylist({
+    required this.id,
+    required this.name,
+    List<Track>? tracks,
+    DateTime? created,
+  }) : tracks = tracks ?? [],
+       created = created ?? DateTime.now();
 
   final String id;
   String name;
@@ -71,18 +81,21 @@ class UserPlaylist {
   final DateTime created;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'created': created.toIso8601String(),
-        'tracks': tracks.where((t) => t.isPersistable).map((t) => t.toJson()).toList(),
-      };
+    'id': id,
+    'name': name,
+    'created': created.toIso8601String(),
+    'tracks': tracks
+        .where((t) => t.isPersistable)
+        .map((t) => t.toJson())
+        .toList(),
+  };
 
   factory UserPlaylist.fromJson(Map<String, dynamic> j) => UserPlaylist(
-        id: j['id'] as String,
-        name: j['name'] as String,
-        created: DateTime.tryParse(j['created'] as String? ?? ''),
-        tracks: ((j['tracks'] as List?) ?? [])
-            .map((e) => Track.fromJson(e as Map<String, dynamic>))
-            .toList(),
-      );
+    id: j['id'] as String,
+    name: j['name'] as String,
+    created: DateTime.tryParse(j['created'] as String? ?? ''),
+    tracks: ((j['tracks'] as List?) ?? [])
+        .map((e) => Track.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  );
 }

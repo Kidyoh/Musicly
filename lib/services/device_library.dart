@@ -9,7 +9,8 @@ class DeviceLibrary {
   static const _ch = MethodChannel('musicly/media');
   static final Map<int, Future<Uint8List?>> _art = {};
 
-  static bool get supported => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  static bool get supported =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   static Future<bool> requestPermission() async {
     if (!supported) return false;
@@ -25,7 +26,9 @@ class DeviceLibrary {
       return Track(
         id: 'ms:$id',
         title: (m['title'] as String?) ?? 'Unknown',
-        artist: artist.isEmpty || artist == '<unknown>' ? 'Unknown artist' : artist,
+        artist: artist.isEmpty || artist == '<unknown>'
+            ? 'Unknown artist'
+            : artist,
         source: TrackSource.device,
         uri: m['uri'] as String,
         duration: Duration(milliseconds: (m['duration'] as num?)?.toInt() ?? 0),

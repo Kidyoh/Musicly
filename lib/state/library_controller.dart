@@ -9,8 +9,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/collection.dart';
 import '../models/track.dart';
+import '../services/audius_api.dart';
 import '../services/deezer_api.dart';
 import '../services/device_library.dart';
+import '../services/radio_api.dart';
 
 /// Everything the user owns or that's personalised: likes, playlists,
 /// followed artists, phone music, history and the home feed.
@@ -23,6 +25,8 @@ class LibraryController extends ChangeNotifier {
   }
 
   final DeezerApi api;
+  final AudiusApi audius = AudiusApi();
+  final RadioApi radio = RadioApi();
 
   ThemeMode themeMode = ThemeMode.light;
 
@@ -48,6 +52,9 @@ class LibraryController extends ChangeNotifier {
   List<Collection> topPlaylists = [];
   List<Genre> genres = [];
   List<Track> forYou = [];
+  List<Track> freeSongs = []; // full-length, from Audius
+  List<Track> stations = []; // live radio, local first
+  String? countryCode;
   String? forYouReason;
   Artist? becauseArtist;
   List<Artist> becauseRelated = [];
@@ -55,6 +62,9 @@ class LibraryController extends ChangeNotifier {
   String? homeError;
 
   bool isFavorite(Track t) => favorites.any((f) => f.id == t.id);
+
+  List<Track> get likedSongs => favorites.where((t) => !t.isRadio).toList();
+  List<Track> get savedStations => favorites.where((t) => t.isRadio).toList();
   bool isFollowing(String artistId) => following.any((a) => a.id == artistId);
 
   List<Track> get localTracks => [...deviceTracks, ...files];
@@ -65,6 +75,7 @@ class LibraryController extends ChangeNotifier {
     recent.removeWhere((r) => r.id == t.id);
     recent.insert(0, t);
     if (recent.length > 50) recent.removeLast();
+    if (t.isRadio) radio.countClick(t.id);
     if (t.artistId != null && t.source == TrackSource.deezer) {
       _plays[t.artistId!] = (_plays[t.artistId!] ?? 0) + 1;
       _artistNames[t.artistId!] = t.artist;
@@ -87,7 +98,8 @@ class LibraryController extends ChangeNotifier {
       score[a.id] = (score[a.id] ?? 0) + 6;
       _artistNames[a.id] = a.name;
     }
-    final ids = score.keys.toList()..sort((a, b) => score[b]!.compareTo(score[a]!));
+    final ids = score.keys.toList()
+      ..sort((a, b) => score[b]!.compareTo(score[a]!));
     return ids.take(n).map((id) => (id, _artistNames[id] ?? '')).toList();
   }
 
@@ -99,7 +111,9 @@ class LibraryController extends ChangeNotifier {
     }
     if (seeds.isEmpty) return;
     try {
-      final radios = await Future.wait(seeds.map((s) => api.artistRadio(s.$1, limit: 20)));
+      final radios = await Future.wait(
+        seeds.map((s) => api.artistRadio(s.$1, limit: 20)),
+      );
       final seen = <String>{};
       final mix = <Track>[];
       // Interleave so the mix isn't one artist after another.
@@ -141,7 +155,34 @@ class LibraryController extends ChangeNotifier {
     }
     homeLoading = false;
     notifyListeners();
-    await buildForYou();
+    await Future.wait([buildForYou(), _loadExtras()]);
+  }
+
+  /// Free full songs and live radio load alongside the main feed; either can
+  /// fail without hiding the rest of Home.
+  Future<void> _loadExtras() async {
+    countryCode ??= PlatformDispatcher.instance.locale.countryCode;
+    await Future.wait([
+      audius
+          .trending(limit: 20)
+          .then((v) => freeSongs = v)
+          .catchError((_) => freeSongs),
+      (() async {
+        var local = <Track>[];
+        if (countryCode != null) {
+          local = await radio
+              .byCountry(countryCode!, limit: 12)
+              .catchError((_) => <Track>[]);
+        }
+        final top = await radio.top(limit: 20).catchError((_) => <Track>[]);
+        final seen = <String>{};
+        stations = [
+          ...local,
+          ...top,
+        ].where((t) => seen.add(t.id)).take(20).toList();
+      })(),
+    ]);
+    notifyListeners();
   }
 
   // ---- Likes & follows -----------------------------------------------------
@@ -266,10 +307,11 @@ class LibraryController extends ChangeNotifier {
     for (final t in deviceTracks) {
       map.putIfAbsent(t.albumId ?? t.album ?? '?', () => []).add(t);
     }
-    final out = map.values
-        .map((l) => (l.first.album ?? 'Unknown album', l.first.artist, l))
-        .toList()
-      ..sort((a, b) => a.$1.toLowerCase().compareTo(b.$1.toLowerCase()));
+    final out =
+        map.values
+            .map((l) => (l.first.album ?? 'Unknown album', l.first.artist, l))
+            .toList()
+          ..sort((a, b) => a.$1.toLowerCase().compareTo(b.$1.toLowerCase()));
     return out;
   }
 
@@ -280,14 +322,16 @@ class LibraryController extends ChangeNotifier {
       final id = 'file:${kIsWeb ? '${f.name}:${f.lengthSync()}' : f.path}';
       if (files.any((t) => t.id == id)) continue;
       final (artist, title) = _splitName(f.name);
-      files.add(Track(
-        id: id,
-        title: title,
-        artist: artist,
-        source: TrackSource.file,
-        uri: kIsWeb ? null : f.path,
-        bytes: kIsWeb ? await f.readAsBytes() : null,
-      ));
+      files.add(
+        Track(
+          id: id,
+          title: title,
+          artist: artist,
+          source: TrackSource.file,
+          uri: kIsWeb ? null : f.path,
+          bytes: kIsWeb ? await f.readAsBytes() : null,
+        ),
+      );
       added++;
     }
     await _save();
@@ -304,9 +348,13 @@ class LibraryController extends ChangeNotifier {
   /// "Artist - Title.mp3" → (Artist, Title).
   (String, String) _splitName(String n) {
     final dot = n.lastIndexOf('.');
-    final base = (dot > 0 ? n.substring(0, dot) : n).replaceAll('_', ' ').trim();
+    final base = (dot > 0 ? n.substring(0, dot) : n)
+        .replaceAll('_', ' ')
+        .trim();
     final dash = base.indexOf(' - ');
-    if (dash > 0) return (base.substring(0, dash).trim(), base.substring(dash + 3).trim());
+    if (dash > 0) {
+      return (base.substring(0, dash).trim(), base.substring(dash + 3).trim());
+    }
     return ('Unknown artist', base);
   }
 
@@ -321,18 +369,28 @@ class LibraryController extends ChangeNotifier {
   Future<void> _save() async {
     try {
       final p = await SharedPreferences.getInstance();
-      String enc(List<Track> l) =>
-          jsonEncode(l.where((t) => t.isPersistable).map((t) => t.toJson()).toList());
+      String enc(List<Track> l) => jsonEncode(
+        l.where((t) => t.isPersistable).map((t) => t.toJson()).toList(),
+      );
       await p.setString('files', enc(files));
       await p.setString('favorites', enc(favorites));
       await p.setString('recent', enc(recent));
-      await p.setString('playlists', jsonEncode(playlists.map((x) => x.toJson()).toList()));
       await p.setString(
-          'following',
-          jsonEncode(following
+        'playlists',
+        jsonEncode(playlists.map((x) => x.toJson()).toList()),
+      );
+      await p.setString(
+        'following',
+        jsonEncode(
+          following
               .map((a) => {'id': a.id, 'name': a.name, 'pic': a.pictureUrl})
-              .toList()));
-      await p.setString('plays', jsonEncode({'plays': _plays, 'names': _artistNames}));
+              .toList(),
+        ),
+      );
+      await p.setString(
+        'plays',
+        jsonEncode({'plays': _plays, 'names': _artistNames}),
+      );
       await p.setBool('deviceScan', deviceScanEnabled);
       await p.setString('theme', themeMode.name);
     } catch (_) {}
@@ -341,23 +399,43 @@ class LibraryController extends ChangeNotifier {
   Future<void> _restore() async {
     try {
       final p = await SharedPreferences.getInstance();
-      List<Track> dec(String k) => ((jsonDecode(p.getString(k) ?? '[]')) as List)
-          .map((e) => Track.fromJson(e as Map<String, dynamic>))
-          .where((t) => t.id.contains(':'))
-          .toList();
+      List<Track> dec(String k) =>
+          ((jsonDecode(p.getString(k) ?? '[]')) as List)
+              .map((e) => Track.fromJson(e as Map<String, dynamic>))
+              .where((t) => t.id.contains(':'))
+              .toList();
       files.addAll(dec('files'));
       // Older versions stored Audius songs; those no longer play.
-      favorites.addAll(dec('favorites').where((t) => !t.id.startsWith('audius')));
+      favorites.addAll(
+        dec('favorites').where((t) => !t.id.startsWith('audius')),
+      );
       recent.addAll(dec('recent').where((t) => !t.id.startsWith('audius')));
-      playlists.addAll(((jsonDecode(p.getString('playlists') ?? '[]')) as List)
-          .map((e) => UserPlaylist.fromJson(e as Map<String, dynamic>)));
-      following.addAll(((jsonDecode(p.getString('following') ?? '[]')) as List).map((e) =>
-          Artist(id: e['id'] as String, name: e['name'] as String, pictureUrl: e['pic'] as String?)));
-      final plays = jsonDecode(p.getString('plays') ?? '{}') as Map<String, dynamic>;
-      (plays['plays'] as Map? ?? {}).forEach((k, v) => _plays[k as String] = (v as num).toInt());
-      (plays['names'] as Map? ?? {}).forEach((k, v) => _artistNames[k as String] = v as String);
+      playlists.addAll(
+        ((jsonDecode(p.getString('playlists') ?? '[]')) as List).map(
+          (e) => UserPlaylist.fromJson(e as Map<String, dynamic>),
+        ),
+      );
+      following.addAll(
+        ((jsonDecode(p.getString('following') ?? '[]')) as List).map(
+          (e) => Artist(
+            id: e['id'] as String,
+            name: e['name'] as String,
+            pictureUrl: e['pic'] as String?,
+          ),
+        ),
+      );
+      final plays =
+          jsonDecode(p.getString('plays') ?? '{}') as Map<String, dynamic>;
+      (plays['plays'] as Map? ?? {}).forEach(
+        (k, v) => _plays[k as String] = (v as num).toInt(),
+      );
+      (plays['names'] as Map? ?? {}).forEach(
+        (k, v) => _artistNames[k as String] = v as String,
+      );
       deviceScanEnabled = p.getBool('deviceScan') ?? false;
-      themeMode = p.getString('theme') == 'dark' ? ThemeMode.dark : ThemeMode.light;
+      themeMode = p.getString('theme') == 'dark'
+          ? ThemeMode.dark
+          : ThemeMode.light;
       notifyListeners();
     } catch (_) {}
   }

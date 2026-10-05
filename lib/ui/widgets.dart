@@ -20,7 +20,9 @@ String fmt(Duration? d) {
 }
 
 String compact(int n) {
-  if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(n >= 10000000 ? 0 : 1)}M';
+  if (n >= 1000000) {
+    return '${(n / 1000000).toStringAsFixed(n >= 10000000 ? 0 : 1)}M';
+  }
   if (n >= 1000) return '${(n / 1000).toStringAsFixed(n >= 10000 ? 0 : 1)}K';
   return '$n';
 }
@@ -36,8 +38,14 @@ Future<ImageProvider?> artworkProvider(Track t) async {
 }
 
 class Artwork extends StatelessWidget {
-  const Artwork(this.track,
-      {super.key, this.size = 48, this.radius = 10, this.shadow = false, this.icon});
+  const Artwork(
+    this.track, {
+    super.key,
+    this.size = 48,
+    this.radius = 10,
+    this.shadow = false,
+    this.icon,
+  });
   final Track? track;
   final double size;
   final double radius;
@@ -58,8 +66,11 @@ class Artwork extends StatelessWidget {
           colors: dark ? [p.line, p.card] : [const Color(0xFF3A3B42), p.ink],
         ),
       ),
-      child: Icon(icon ?? AppIcons.music,
-          size: size * 0.38, color: dark ? p.sub : Colors.white.withValues(alpha: 0.75)),
+      child: Icon(
+        icon ?? AppIcons.music,
+        size: size * 0.38,
+        color: dark ? p.sub : Colors.white.withValues(alpha: 0.75),
+      ),
     );
 
     Widget image;
@@ -72,9 +83,8 @@ class Artwork extends StatelessWidget {
         fit: BoxFit.cover,
         gaplessPlayback: true,
         webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
-        frameBuilder: (_, child, frame, sync) => sync || frame != null
-            ? child
-            : placeholder,
+        frameBuilder: (_, child, frame, sync) =>
+            sync || frame != null ? child : placeholder,
         errorBuilder: (_, _, _) => placeholder,
       );
     } else if (t?.mediaId != null) {
@@ -82,7 +92,13 @@ class Artwork extends StatelessWidget {
         future: DeviceLibrary.artwork(t!.mediaId!),
         builder: (_, snap) => snap.data == null
             ? placeholder
-            : Image.memory(snap.data!, width: size, height: size, fit: BoxFit.cover, gaplessPlayback: true),
+            : Image.memory(
+                snap.data!,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+              ),
       );
     } else {
       image = placeholder;
@@ -96,13 +112,17 @@ class Artwork extends StatelessWidget {
         boxShadow: shadow
             ? [
                 BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.25),
-                    blurRadius: 30,
-                    offset: const Offset(0, 14)),
+                  color: Colors.black.withValues(alpha: 0.25),
+                  blurRadius: 30,
+                  offset: const Offset(0, 14),
+                ),
               ]
             : null,
       ),
-      child: ClipRRect(borderRadius: BorderRadius.circular(radius), child: image),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: image,
+      ),
     );
   }
 }
@@ -116,12 +136,21 @@ class Mosaic extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final withArt = tracks.where((t) => t.artworkUrl != null || t.mediaId != null).toList();
+    final withArt = tracks
+        .where((t) => t.artworkUrl != null || t.mediaId != null)
+        .toList();
     final seen = <String>{};
-    final unique = withArt.where((t) => seen.add(t.artworkUrl ?? '${t.mediaId}')).take(4).toList();
+    final unique = withArt
+        .where((t) => seen.add(t.artworkUrl ?? '${t.mediaId}'))
+        .take(4)
+        .toList();
     if (unique.length < 4) {
-      return Artwork(unique.isEmpty ? null : unique.first,
-          size: size, radius: radius, icon: AppIcons.playNext);
+      return Artwork(
+        unique.isEmpty ? null : unique.first,
+        size: size,
+        radius: radius,
+        icon: AppIcons.playNext,
+      );
     }
     final half = size / 2;
     return ClipRRect(
@@ -129,7 +158,9 @@ class Mosaic extends StatelessWidget {
       child: SizedBox(
         width: size,
         height: size,
-        child: Wrap(children: [for (final t in unique) Artwork(t, size: half, radius: 0)]),
+        child: Wrap(
+          children: [for (final t in unique) Artwork(t, size: half, radius: 0)],
+        ),
       ),
     );
   }
@@ -142,21 +173,27 @@ class ArtistAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Artwork(
-        Track(
-            id: 'a:${artist.id}',
-            title: artist.name,
-            artist: '',
-            source: TrackSource.deezer,
-            artworkUrl: artist.pictureUrl),
-        size: size,
-        radius: size / 2,
-        icon: AppIcons.artist,
-      );
+    Track(
+      id: 'a:${artist.id}',
+      title: artist.name,
+      artist: '',
+      source: TrackSource.deezer,
+      artworkUrl: artist.pictureUrl,
+    ),
+    size: size,
+    radius: size / 2,
+    icon: AppIcons.artist,
+  );
 }
 
 /// Three bouncing bars shown next to the song that's playing.
 class EqualizerBars extends StatefulWidget {
-  const EqualizerBars({super.key, required this.playing, this.color, this.size = 16});
+  const EqualizerBars({
+    super.key,
+    required this.playing,
+    this.color,
+    this.size = 16,
+  });
   final bool playing;
   final Color? color;
   final double size;
@@ -164,9 +201,12 @@ class EqualizerBars extends StatefulWidget {
   State<EqualizerBars> createState() => _EqualizerBarsState();
 }
 
-class _EqualizerBarsState extends State<EqualizerBars> with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
+class _EqualizerBarsState extends State<EqualizerBars>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
 
   @override
   void initState() {
@@ -200,11 +240,16 @@ class _EqualizerBarsState extends State<EqualizerBars> with SingleTickerProvider
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: List.generate(4, (i) {
             final phase = _c.value * 2 * pi + i * 1.7;
-            final h = widget.playing ? 0.3 + 0.7 * (0.5 + 0.5 * sin(phase)).abs() : 0.3;
+            final h = widget.playing
+                ? 0.3 + 0.7 * (0.5 + 0.5 * sin(phase)).abs()
+                : 0.3;
             return Container(
               width: widget.size / 6,
               height: widget.size * h,
-              decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(1)),
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(1),
+              ),
             );
           }),
         ),
@@ -255,8 +300,11 @@ class _WaveformSeekBarState extends State<WaveformSeekBar> {
       builder: (context, snap) {
         final total = c.player.duration ?? Duration.zero;
         final pos = snap.data ?? Duration.zero;
-        final frac = _drag ??
-            (total.inMilliseconds == 0 ? 0.0 : pos.inMilliseconds / total.inMilliseconds)
+        final frac =
+            _drag ??
+            (total.inMilliseconds == 0
+                    ? 0.0
+                    : pos.inMilliseconds / total.inMilliseconds)
                 .clamp(0.0, 1.0);
         void update(Offset local, double width) =>
             setState(() => _drag = (local.dx / width).clamp(0.0, 1.0));
@@ -265,29 +313,46 @@ class _WaveformSeekBarState extends State<WaveformSeekBar> {
           setState(() => _drag = null);
         }
 
-        return Column(children: [
-          LayoutBuilder(builder: (context, box) {
-            return GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragStart: (d) => update(d.localPosition, box.maxWidth),
-              onHorizontalDragUpdate: (d) => update(d.localPosition, box.maxWidth),
-              onHorizontalDragEnd: (_) => commit(),
-              onTapDown: (d) => update(d.localPosition, box.maxWidth),
-              onTapUp: (_) => commit(),
-              child: SizedBox(
-                height: 44,
-                width: double.infinity,
-                child: CustomPaint(painter: _WavePainter(_bars, frac, p.ink, p.line)),
-              ),
-            );
-          }),
-          const SizedBox(height: 6),
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text(fmt(_drag != null ? total * _drag! : pos),
-                style: TextStyle(fontSize: 12, color: p.ink, fontWeight: FontWeight.w500)),
-            Text(fmt(total), style: TextStyle(fontSize: 12, color: p.sub)),
-          ]),
-        ]);
+        return Column(
+          children: [
+            LayoutBuilder(
+              builder: (context, box) {
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onHorizontalDragStart: (d) =>
+                      update(d.localPosition, box.maxWidth),
+                  onHorizontalDragUpdate: (d) =>
+                      update(d.localPosition, box.maxWidth),
+                  onHorizontalDragEnd: (_) => commit(),
+                  onTapDown: (d) => update(d.localPosition, box.maxWidth),
+                  onTapUp: (_) => commit(),
+                  child: SizedBox(
+                    height: 44,
+                    width: double.infinity,
+                    child: CustomPaint(
+                      painter: _WavePainter(_bars, frac, p.ink, p.line),
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  fmt(_drag != null ? total * _drag! : pos),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: p.ink,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Text(fmt(total), style: TextStyle(fontSize: 12, color: p.sub)),
+              ],
+            ),
+          ],
+        );
       },
     );
   }
@@ -328,13 +393,22 @@ class PreviewBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: small ? 5 : 8, vertical: small ? 1 : 3),
+      padding: EdgeInsets.symmetric(
+        horizontal: small ? 5 : 8,
+        vertical: small ? 1 : 3,
+      ),
       decoration: BoxDecoration(
         border: Border.all(color: p.sub.withValues(alpha: 0.6)),
         borderRadius: BorderRadius.circular(5),
       ),
-      child: Text(small ? '30s' : 'Preview · 30s',
-          style: TextStyle(fontSize: small ? 9 : 11, fontWeight: FontWeight.w700, color: p.sub)),
+      child: Text(
+        small ? '30s' : 'Preview · 30s',
+        style: TextStyle(
+          fontSize: small ? 9 : 11,
+          fontWeight: FontWeight.w700,
+          color: p.sub,
+        ),
+      ),
     );
   }
 }
@@ -372,35 +446,56 @@ class NumberedTrackRow extends StatelessWidget {
           color: isCurrent ? p.card : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Row(children: [
-          SizedBox(
-            width: 36,
-            child: isCurrent
-                ? Align(
-                    alignment: Alignment.centerLeft,
-                    child: EqualizerBars(playing: c.player.playing))
-                : Text((index + 1).toString().padLeft(2, '0'),
-                    style: TextStyle(fontWeight: FontWeight.w600, color: p.ink)),
-          ),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(track.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-              const SizedBox(height: 3),
-              Text(
-                  track.duration == null || track.duration == Duration.zero
-                      ? track.artist
-                      : '${track.artist}  •  ${fmt(track.duration)}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: p.sub, fontSize: 13)),
-            ]),
-          ),
-          ?trailing,
-          MoreButton(track: track, onRemove: onRemove, removeLabel: removeLabel),
-        ]),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 36,
+              child: isCurrent
+                  ? Align(
+                      alignment: Alignment.centerLeft,
+                      child: EqualizerBars(playing: c.player.playing),
+                    )
+                  : Text(
+                      (index + 1).toString().padLeft(2, '0'),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: p.ink,
+                      ),
+                    ),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    track.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    track.duration == null || track.duration == Duration.zero
+                        ? track.artist
+                        : '${track.artist}  •  ${fmt(track.duration)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: p.sub, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+            ?trailing,
+            MoreButton(
+              track: track,
+              onRemove: onRemove,
+              removeLabel: removeLabel,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -408,7 +503,12 @@ class NumberedTrackRow extends StatelessWidget {
 
 /// Row with artwork, used in search, home and the charts.
 class ArtTrackRow extends StatelessWidget {
-  const ArtTrackRow({super.key, required this.track, required this.onTap, this.leading});
+  const ArtTrackRow({
+    super.key,
+    required this.track,
+    required this.onTap,
+    this.leading,
+  });
   final Track track;
   final VoidCallback onTap;
   final Widget? leading;
@@ -422,59 +522,102 @@ class ArtTrackRow extends StatelessWidget {
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 7),
-        child: Row(children: [
-          if (leading != null) ...[leading!, const SizedBox(width: 12)],
-          Stack(alignment: Alignment.center, children: [
-            Artwork(track, size: 52, radius: 12),
-            if (isCurrent)
-              Container(
-                width: 52,
-                height: 52,
-                decoration:
-                    BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(12)),
-                child: Center(child: EqualizerBars(playing: c.player.playing, color: Colors.white)),
+        child: Row(
+          children: [
+            if (leading != null) ...[leading!, const SizedBox(width: 12)],
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                track.isRadio
+                    ? StationArt(track, size: 52, radius: 12)
+                    : Artwork(track, size: 52, radius: 12),
+                if (isCurrent)
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: Colors.black45,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Center(
+                      child: EqualizerBars(
+                        playing: c.player.playing,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    track.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          track.artist,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: p.sub, fontSize: 13),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      SourceBadge(track),
+                    ],
+                  ),
+                ],
               ),
-          ]),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(track.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-              const SizedBox(height: 3),
-              Row(children: [
-                Flexible(
-                  child: Text(track.artist,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: p.sub, fontSize: 13)),
-                ),
-              ]),
-            ]),
-          ),
-          MoreButton(track: track),
-        ]),
+            ),
+            MoreButton(track: track),
+          ],
+        ),
       ),
     );
   }
 }
 
 class MoreButton extends StatelessWidget {
-  const MoreButton({super.key, required this.track, this.onRemove, this.removeLabel});
+  const MoreButton({
+    super.key,
+    required this.track,
+    this.onRemove,
+    this.removeLabel,
+  });
   final Track track;
   final VoidCallback? onRemove;
   final String? removeLabel;
   @override
   Widget build(BuildContext context) => IconButton(
-        icon: Icon(AppIcons.more, color: Palette.of(context).sub, size: 20),
-        onPressed: () =>
-            showTrackOptions(context, track, onRemove: onRemove, removeLabel: removeLabel),
-      );
+    icon: Icon(AppIcons.more, color: Palette.of(context).sub, size: 20),
+    onPressed: () => showTrackOptions(
+      context,
+      track,
+      onRemove: onRemove,
+      removeLabel: removeLabel,
+    ),
+  );
 }
 
 class SectionHeader extends StatelessWidget {
-  const SectionHeader(this.title, {super.key, this.subtitle, this.action, this.onAction});
+  const SectionHeader(
+    this.title, {
+    super.key,
+    this.subtitle,
+    this.action,
+    this.onAction,
+  });
   final String title;
   final String? subtitle;
   final String? action;
@@ -482,53 +625,87 @@ class SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 28, 12, 12),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    padding: const EdgeInsets.fromLTRB(20, 28, 12, 12),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               if (subtitle != null)
-                Text(subtitle!,
-                    style: TextStyle(color: Palette.of(context).sub, fontSize: 13)),
-              Text(title,
-                  style: const TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.3)),
-            ]),
+                Text(
+                  subtitle!,
+                  style: TextStyle(
+                    color: Palette.of(context).sub,
+                    fontSize: 13,
+                  ),
+                ),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.3,
+                ),
+              ),
+            ],
           ),
-          if (action != null)
-            TextButton(
-              onPressed: onAction,
-              child: Text(action!,
-                  style: TextStyle(color: Palette.of(context).sub, fontWeight: FontWeight.w600)),
+        ),
+        if (action != null)
+          TextButton(
+            onPressed: onAction,
+            child: Text(
+              action!,
+              style: TextStyle(
+                color: Palette.of(context).sub,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-        ]),
-      );
+          ),
+      ],
+    ),
+  );
 }
 
 class EmptyState extends StatelessWidget {
-  const EmptyState({super.key, required this.icon, required this.text, this.action});
+  const EmptyState({
+    super.key,
+    required this.icon,
+    required this.text,
+    this.action,
+  });
   final IconData icon;
   final String text;
   final Widget? action;
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(color: Palette.of(context).card, shape: BoxShape.circle),
-              child: Icon(icon, size: 30, color: Palette.of(context).sub),
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: Palette.of(context).card,
+              shape: BoxShape.circle,
             ),
-            const SizedBox(height: 16),
-            Text(text,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Palette.of(context).sub, height: 1.5)),
-            if (action != null) ...[const SizedBox(height: 20), action!],
-          ]),
-        ),
-      );
+            child: Icon(icon, size: 30, color: Palette.of(context).sub),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            text,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Palette.of(context).sub, height: 1.5),
+          ),
+          if (action != null) ...[const SizedBox(height: 20), action!],
+        ],
+      ),
+    ),
+  );
 }
 
 /// Dark filled ("Play") or soft grey ("Shuffle") button from the design.
@@ -555,9 +732,14 @@ class PillButton extends StatelessWidget {
         style: FilledButton.styleFrom(
           backgroundColor: filled ? p.ink : p.card,
           foregroundColor: filled ? p.onInk : p.ink,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          textStyle:
-              const TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w600, fontSize: 15),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          textStyle: const TextStyle(
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w600,
+            fontSize: 15,
+          ),
         ),
         icon: Icon(icon, size: 20),
         label: Text(label),
@@ -584,66 +766,281 @@ class CoverCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: SizedBox(
-          width: width,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            art,
-            const SizedBox(height: 10),
-            Text(title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-            const SizedBox(height: 2),
-            Text(subtitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: Palette.of(context).sub, fontSize: 12)),
-          ]),
-        ),
-      );
+    onTap: onTap,
+    child: SizedBox(
+      width: width,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          art,
+          const SizedBox(height: 10),
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: Palette.of(context).sub, fontSize: 12),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 /// Round artist photo with name underneath.
 class ArtistBubble extends StatelessWidget {
-  const ArtistBubble({super.key, required this.artist, required this.onTap, this.size = 96});
+  const ArtistBubble({
+    super.key,
+    required this.artist,
+    required this.onTap,
+    this.size = 96,
+  });
   final Artist artist;
   final VoidCallback onTap;
   final double size;
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: SizedBox(
-          width: size,
-          child: Column(children: [
-            ArtistAvatar(artist, size: size),
-            const SizedBox(height: 8),
-            Text(artist.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-          ]),
-        ),
-      );
+    onTap: onTap,
+    child: SizedBox(
+      width: size,
+      child: Column(
+        children: [
+          ArtistAvatar(artist, size: size),
+          const SizedBox(height: 8),
+          Text(
+            artist.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 /// Horizontal scrolling row.
 class HRow extends StatelessWidget {
-  const HRow({super.key, required this.height, required this.children, this.spacing = 14});
+  const HRow({
+    super.key,
+    required this.height,
+    required this.children,
+    this.spacing = 14,
+  });
   final double height;
   final List<Widget> children;
   final double spacing;
   @override
   Widget build(BuildContext context) => SizedBox(
-        height: height,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          itemCount: children.length,
-          separatorBuilder: (_, _) => SizedBox(width: spacing),
-          itemBuilder: (_, i) => children[i],
+    height: height,
+    child: ListView.separated(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      itemCount: children.length,
+      separatorBuilder: (_, _) => SizedBox(width: spacing),
+      itemBuilder: (_, i) => children[i],
+    ),
+  );
+}
+
+/// Small tag after the artist: 30s preview, FULL free song, or LIVE radio.
+class SourceBadge extends StatelessWidget {
+  const SourceBadge(this.track, {super.key});
+  final Track track;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    if (track.isPreview) return const PreviewBadge();
+    if (track.source != TrackSource.audius && !track.isRadio) {
+      return const SizedBox.shrink();
+    }
+    final live = track.isRadio;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: live ? const Color(0xFFE5484D) : p.ink,
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: Text(
+        live ? 'LIVE' : 'FULL',
+        style: TextStyle(
+          fontSize: 9,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.4,
+          color: live ? Colors.white : p.onInk,
         ),
-      );
+      ),
+    );
+  }
+}
+
+/// Radio logos are usually small favicons, so they sit centred on a soft
+/// card instead of being stretched edge to edge.
+class StationArt extends StatelessWidget {
+  const StationArt(
+    this.station, {
+    super.key,
+    this.size = 120,
+    this.radius = 18,
+  });
+  final Track station;
+  final double size;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final icon = Icon(AppIcons.radio, size: size * 0.36, color: p.sub);
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: p.card,
+        borderRadius: BorderRadius.circular(radius),
+      ),
+      padding: EdgeInsets.all(size * 0.18),
+      child: station.artworkUrl == null
+          ? icon
+          : ClipRRect(
+              borderRadius: BorderRadius.circular(radius * 0.4),
+              child: Image.network(
+                station.artworkUrl!,
+                fit: BoxFit.contain,
+                webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
+                frameBuilder: (_, child, frame, sync) =>
+                    sync || frame != null ? child : icon,
+                errorBuilder: (_, _, _) => icon,
+              ),
+            ),
+    );
+  }
+}
+
+/// Square station tile with a LIVE tag, for horizontal rows and grids.
+class StationCard extends StatelessWidget {
+  const StationCard({
+    super.key,
+    required this.station,
+    required this.onTap,
+    this.width = 132,
+  });
+  final Track station;
+  final VoidCallback onTap;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.watch<PlayerController>();
+    final playing = c.current?.id == station.id;
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: width,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Stack(
+              children: [
+                StationArt(station, size: width),
+                Positioned(left: 8, top: 8, child: SourceBadge(station)),
+                if (playing)
+                  Positioned(
+                    right: 10,
+                    bottom: 10,
+                    child: EqualizerBars(playing: c.player.playing, size: 14),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              station.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+            ),
+            Text(
+              station.artist,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: Palette.of(context).sub, fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Replaces the scrubber on live radio: a pulsing dot and what's on air.
+class LiveBar extends StatefulWidget {
+  const LiveBar({super.key, this.onAir});
+  final String? onAir;
+  @override
+  State<LiveBar> createState() => _LiveBarState();
+}
+
+class _LiveBarState extends State<LiveBar> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Container(
+      height: 64,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: p.card,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          FadeTransition(
+            opacity: Tween(begin: 0.35, end: 1.0).animate(_c),
+            child: Container(
+              width: 10,
+              height: 10,
+              decoration: const BoxDecoration(
+                color: Color(0xFFE5484D),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Text(
+            'LIVE',
+            style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.8),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              widget.onAir == null
+                  ? 'Streaming now'
+                  : 'On air: ${widget.onAir}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: p.sub, fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

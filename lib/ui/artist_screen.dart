@@ -19,7 +19,8 @@ class ArtistScreen extends StatefulWidget {
 }
 
 class _ArtistScreenState extends State<ArtistScreen> {
-  late final Future<(Artist, List<Track>, List<Collection>, List<Artist>)> _data = _load();
+  late final Future<(Artist, List<Track>, List<Collection>, List<Artist>)>
+  _data = _load();
   bool _allTop = false;
 
   Future<(Artist, List<Track>, List<Collection>, List<Artist>)> _load() async {
@@ -43,107 +44,157 @@ class _ArtistScreenState extends State<ArtistScreen> {
     final p = Palette.of(context);
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(icon: const Icon(AppIcons.back), onPressed: () => Navigator.maybePop(context)),
+        leading: IconButton(
+          icon: const Icon(AppIcons.back),
+          onPressed: () => Navigator.maybePop(context),
+        ),
       ),
       body: FutureBuilder(
         future: _data,
         builder: (context, snap) {
           if (snap.hasError) {
-            return const EmptyState(icon: AppIcons.offline, text: 'Could not load this artist.');
+            return const EmptyState(
+              icon: AppIcons.offline,
+              text: 'Could not load this artist.',
+            );
           }
-          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+          if (!snap.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
           final (artist, top, albums, related) = snap.data!;
           final c = context.read<PlayerController>();
           final lib = context.watch<LibraryController>();
           final following = lib.isFollowing(artist.id);
           final shown = _allTop ? top : top.take(5).toList();
 
-          return ListView(padding: const EdgeInsets.only(bottom: 24), children: [
-            Center(child: ArtistAvatar(artist, size: 168)),
-            const SizedBox(height: 18),
-            Text(artist.name,
+          return ListView(
+            padding: const EdgeInsets.only(bottom: 24),
+            children: [
+              Center(child: ArtistAvatar(artist, size: 168)),
+              const SizedBox(height: 18),
+              Text(
+                artist.name,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w700, letterSpacing: -0.8)),
-            const SizedBox(height: 4),
-            Text(
-              [
-                if (artist.fans != null) '${compact(artist.fans!)} fans',
-                if (artist.albums != null) '${artist.albums} albums',
-              ].join('  •  '),
-              textAlign: TextAlign.center,
-              style: TextStyle(color: p.sub),
-            ),
-            const SizedBox(height: 18),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(children: [
-                Expanded(
-                  child: PillButton(
-                    icon: AppIcons.playCircle,
-                    label: 'Play',
-                    onPressed: top.isEmpty ? null : () => c.playQueue(top, 0),
-                  ),
+                style: const TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.8,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: PillButton(
-                    icon: AppIcons.radio,
-                    label: 'Radio',
-                    filled: false,
-                    onPressed: () async {
-                      final radio = await lib.api.artistRadio(artist.id, limit: 40);
-                      c.playQueue(radio, 0);
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                SizedBox(
-                  height: 48,
-                  child: OutlinedButton(
-                    onPressed: () => lib.toggleFollow(artist),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: p.ink,
-                      side: BorderSide(color: following ? p.ink : p.line, width: 1.4),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                [
+                  if (artist.fans != null) '${compact(artist.fans!)} fans',
+                  if (artist.albums != null) '${artist.albums} albums',
+                ].join('  •  '),
+                textAlign: TextAlign.center,
+                style: TextStyle(color: p.sub),
+              ),
+              const SizedBox(height: 18),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: PillButton(
+                        icon: AppIcons.playCircle,
+                        label: 'Play',
+                        onPressed: top.isEmpty
+                            ? null
+                            : () => c.playQueue(top, 0),
+                      ),
                     ),
-                    child: Icon(following ? AppIcons.following : AppIcons.follow, size: 20),
-                  ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: PillButton(
+                        icon: AppIcons.radio,
+                        label: 'Radio',
+                        filled: false,
+                        onPressed: () async {
+                          final radio = await lib.api.artistRadio(
+                            artist.id,
+                            limit: 40,
+                          );
+                          c.playQueue(radio, 0);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      height: 48,
+                      child: OutlinedButton(
+                        onPressed: () => lib.toggleFollow(artist),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: p.ink,
+                          side: BorderSide(
+                            color: following ? p.ink : p.line,
+                            width: 1.4,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: Icon(
+                          following ? AppIcons.following : AppIcons.follow,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ]),
-            ),
-            if (top.isNotEmpty) ...[
-              const SectionHeader('Popular'),
-              for (var i = 0; i < shown.length; i++)
-                NumberedTrackRow(index: i, track: shown[i], onTap: () => c.playQueue(top, i)),
-              if (top.length > 5)
-                Center(
-                  child: TextButton(
-                    onPressed: () => setState(() => _allTop = !_allTop),
-                    child: Text(_allTop ? 'Show less' : 'Show all ${top.length}',
-                        style: TextStyle(color: p.sub, fontWeight: FontWeight.w600)),
+              ),
+              if (top.isNotEmpty) ...[
+                const SectionHeader('Popular'),
+                for (var i = 0; i < shown.length; i++)
+                  NumberedTrackRow(
+                    index: i,
+                    track: shown[i],
+                    onTap: () => c.playQueue(top, i),
                   ),
+                if (top.length > 5)
+                  Center(
+                    child: TextButton(
+                      onPressed: () => setState(() => _allTop = !_allTop),
+                      child: Text(
+                        _allTop ? 'Show less' : 'Show all ${top.length}',
+                        style: TextStyle(
+                          color: p.sub,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+              if (albums.isNotEmpty) ...[
+                const SectionHeader('Discography'),
+                HRow(
+                  height: 206,
+                  children: [
+                    for (final a in albums)
+                      CoverCard(
+                        title: a.title,
+                        subtitle: a.year == null ? 'Album' : '${a.year}',
+                        art: Artwork(a.coverTrack, size: 148, radius: 16),
+                        onTap: () => openCollection(context, a),
+                      ),
+                  ],
                 ),
+              ],
+              if (related.isNotEmpty) ...[
+                const SectionHeader('Fans also like'),
+                HRow(
+                  height: 130,
+                  children: [
+                    for (final r in related)
+                      ArtistBubble(
+                        artist: r,
+                        onTap: () => openArtist(context, r.id, r.name),
+                      ),
+                  ],
+                ),
+              ],
             ],
-            if (albums.isNotEmpty) ...[
-              const SectionHeader('Discography'),
-              HRow(height: 206, children: [
-                for (final a in albums)
-                  CoverCard(
-                    title: a.title,
-                    subtitle: a.year == null ? 'Album' : '${a.year}',
-                    art: Artwork(a.coverTrack, size: 148, radius: 16),
-                    onTap: () => openCollection(context, a),
-                  ),
-              ]),
-            ],
-            if (related.isNotEmpty) ...[
-              const SectionHeader('Fans also like'),
-              HRow(height: 130, children: [
-                for (final r in related)
-                  ArtistBubble(artist: r, onTap: () => openArtist(context, r.id, r.name)),
-              ]),
-            ],
-          ]);
+          );
         },
       ),
     );

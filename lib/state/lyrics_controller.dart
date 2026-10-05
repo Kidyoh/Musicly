@@ -36,6 +36,12 @@ class LyricsController extends ChangeNotifier {
   }
 
   Future<void> _load(Track t) async {
+    if (t.isRadio) {
+      lyrics = null;
+      status = LyricsStatus.idle;
+      notifyListeners();
+      return;
+    }
     final prefs = await SharedPreferences.getInstance();
     offset = Duration(milliseconds: prefs.getInt('lyr_off:${t.id}') ?? 0);
     if (_cache.containsKey(t.id)) {

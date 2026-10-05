@@ -11,13 +11,15 @@ class DeezerApi {
     final uri = Uri.parse('$_host$path').replace(queryParameters: q);
     dynamic body;
     // Up to three attempts with a short backoff, for patchy mobile networks.
-    for (var attempt = 0;; attempt++) {
+    for (var attempt = 0; ; attempt++) {
       try {
         body = await fetchJson(uri, jsonp: true);
         break;
       } catch (_) {
         if (attempt >= 2) rethrow;
-        await Future.delayed(Duration(milliseconds: 300 * (attempt + 1) * (attempt + 1)));
+        await Future.delayed(
+          Duration(milliseconds: 300 * (attempt + 1) * (attempt + 1)),
+        );
       }
     }
     if (body is Map && body['error'] != null) {
@@ -42,7 +44,9 @@ class DeezerApi {
       artist: (ar?['name'] ?? 'Unknown artist') as String,
       source: TrackSource.deezer,
       uri: m['preview'] as String?,
-      artworkUrl: (al?['cover_xl'] ?? al?['cover_big'] ?? al?['cover_medium']) as String?,
+      artworkUrl:
+          (al?['cover_xl'] ?? al?['cover_big'] ?? al?['cover_medium'])
+              as String?,
       duration: Duration(seconds: ((m['duration'] ?? 0) as num).toInt()),
       artistId: ar?['id']?.toString(),
       album: al?['title'] as String?,
@@ -52,36 +56,41 @@ class DeezerApi {
   }
 
   static Collection album(Map m) => Collection(
-        id: m['id'].toString(),
-        title: (m['title'] ?? 'Untitled') as String,
-        owner: ((m['artist'] as Map?)?['name'] ?? '') as String,
-        ownerId: (m['artist'] as Map?)?['id']?.toString(),
-        kind: CollectionKind.album,
-        artworkUrl: (m['cover_xl'] ?? m['cover_big']) as String?,
-        trackCount: (m['nb_tracks'] as num?)?.toInt(),
-        year: DateTime.tryParse((m['release_date'] ?? '') as String)?.year,
-      );
+    id: m['id'].toString(),
+    title: (m['title'] ?? 'Untitled') as String,
+    owner: ((m['artist'] as Map?)?['name'] ?? '') as String,
+    ownerId: (m['artist'] as Map?)?['id']?.toString(),
+    kind: CollectionKind.album,
+    artworkUrl: (m['cover_xl'] ?? m['cover_big']) as String?,
+    trackCount: (m['nb_tracks'] as num?)?.toInt(),
+    year: DateTime.tryParse((m['release_date'] ?? '') as String)?.year,
+  );
 
   static Collection playlist(Map m) => Collection(
-        id: m['id'].toString(),
-        title: (m['title'] ?? 'Untitled') as String,
-        owner: ((m['user'] as Map?)?['name'] ?? (m['creator'] as Map?)?['name'] ?? 'Deezer')
+    id: m['id'].toString(),
+    title: (m['title'] ?? 'Untitled') as String,
+    owner:
+        ((m['user'] as Map?)?['name'] ??
+                (m['creator'] as Map?)?['name'] ??
+                'Deezer')
             as String,
-        kind: CollectionKind.playlist,
-        artworkUrl: (m['picture_xl'] ?? m['picture_big']) as String?,
-        trackCount: (m['nb_tracks'] as num?)?.toInt(),
-      );
+    kind: CollectionKind.playlist,
+    artworkUrl: (m['picture_xl'] ?? m['picture_big']) as String?,
+    trackCount: (m['nb_tracks'] as num?)?.toInt(),
+  );
 
   static Artist artist(Map m) => Artist(
-        id: m['id'].toString(),
-        name: (m['name'] ?? '') as String,
-        pictureUrl: (m['picture_xl'] ?? m['picture_big']) as String?,
-        fans: (m['nb_fan'] as num?)?.toInt(),
-        albums: (m['nb_album'] as num?)?.toInt(),
-      );
+    id: m['id'].toString(),
+    name: (m['name'] ?? '') as String,
+    pictureUrl: (m['picture_xl'] ?? m['picture_big']) as String?,
+    fans: (m['nb_fan'] as num?)?.toInt(),
+    albums: (m['nb_album'] as num?)?.toInt(),
+  );
 
-  List<Track> _tracks(List<Map> l) =>
-      l.where((m) => (m['preview'] ?? '') != '' && m['readable'] != false).map((m) => track(m)).toList();
+  List<Track> _tracks(List<Map> l) => l
+      .where((m) => (m['preview'] ?? '') != '' && m['readable'] != false)
+      .map((m) => track(m))
+      .toList();
 
   // ---- Endpoints ------------------------------------------------------------
 
@@ -89,46 +98,71 @@ class DeezerApi {
   Future<List<Track>> chartTracks({int genreId = 0, int limit = 50}) async =>
       _tracks(await _list('/chart/$genreId/tracks', {'limit': '$limit'}));
 
-  Future<List<Collection>> chartAlbums({int genreId = 0, int limit = 20}) async =>
-      (await _list('/chart/$genreId/albums', {'limit': '$limit'})).map(album).toList();
+  Future<List<Collection>> chartAlbums({
+    int genreId = 0,
+    int limit = 20,
+  }) async => (await _list('/chart/$genreId/albums', {
+    'limit': '$limit',
+  })).map(album).toList();
 
   Future<List<Artist>> chartArtists({int genreId = 0, int limit = 20}) async =>
-      (await _list('/chart/$genreId/artists', {'limit': '$limit'})).map(artist).toList();
+      (await _list('/chart/$genreId/artists', {
+        'limit': '$limit',
+      })).map(artist).toList();
 
   Future<List<Collection>> chartPlaylists({int limit = 20}) async =>
-      (await _list('/chart/0/playlists', {'limit': '$limit'})).map(playlist).toList();
+      (await _list('/chart/0/playlists', {
+        'limit': '$limit',
+      })).map(playlist).toList();
 
-  Future<List<Genre>> genres() async => (await _list('/genre'))
-      .where((m) => m['id'] != 0)
-      .map((m) => Genre(
-            id: (m['id'] as num).toInt(),
-            name: m['name'] as String,
-            pictureUrl: (m['picture_xl'] ?? m['picture_big']) as String?,
-          ))
-      .toList();
+  Future<List<Genre>> genres() async =>
+      (await _list('/genre'))
+          .where((m) => m['id'] != 0)
+          .map(
+            (m) => Genre(
+              id: (m['id'] as num).toInt(),
+              name: m['name'] as String,
+              pictureUrl: (m['picture_xl'] ?? m['picture_big']) as String?,
+            ),
+          )
+          .toList();
 
   Future<List<Track>> search(String q, {int limit = 30}) async =>
       _tracks(await _list('/search', {'q': q, 'limit': '$limit'}));
 
   Future<List<Artist>> searchArtists(String q, {int limit = 10}) async =>
-      (await _list('/search/artist', {'q': q, 'limit': '$limit'})).map(artist).toList();
+      (await _list('/search/artist', {
+        'q': q,
+        'limit': '$limit',
+      })).map(artist).toList();
 
   Future<List<Collection>> searchAlbums(String q, {int limit = 10}) async =>
-      (await _list('/search/album', {'q': q, 'limit': '$limit'})).map(album).toList();
+      (await _list('/search/album', {
+        'q': q,
+        'limit': '$limit',
+      })).map(album).toList();
 
   Future<List<Collection>> searchPlaylists(String q, {int limit = 10}) async =>
-      (await _list('/search/playlist', {'q': q, 'limit': '$limit'})).map(playlist).toList();
+      (await _list('/search/playlist', {
+        'q': q,
+        'limit': '$limit',
+      })).map(playlist).toList();
 
-  Future<Artist> artistInfo(String id) async => artist(await _get('/artist/$id') as Map);
+  Future<Artist> artistInfo(String id) async =>
+      artist(await _get('/artist/$id') as Map);
 
   Future<List<Track>> artistTop(String id, {int limit = 20}) async =>
       _tracks(await _list('/artist/$id/top', {'limit': '$limit'}));
 
   Future<List<Collection>> artistAlbums(String id, {int limit = 30}) async =>
-      (await _list('/artist/$id/albums', {'limit': '$limit'})).map(album).toList();
+      (await _list('/artist/$id/albums', {
+        'limit': '$limit',
+      })).map(album).toList();
 
   Future<List<Artist>> relatedArtists(String id, {int limit = 12}) async =>
-      (await _list('/artist/$id/related', {'limit': '$limit'})).map(artist).toList();
+      (await _list('/artist/$id/related', {
+        'limit': '$limit',
+      })).map(artist).toList();
 
   /// Endless-style mix of songs like this artist's.
   Future<List<Track>> artistRadio(String id, {int limit = 25}) async =>
@@ -136,7 +170,8 @@ class DeezerApi {
 
   Future<List<Track>> albumTracks(String id) async {
     final body = await _get('/album/$id') as Map;
-    final list = ((body['tracks'] as Map?)?['data'] as List? ?? const []).cast<Map>();
+    final list = ((body['tracks'] as Map?)?['data'] as List? ?? const [])
+        .cast<Map>();
     return list
         .where((m) => (m['preview'] ?? '') != '')
         .map((m) => track(m, album: body))

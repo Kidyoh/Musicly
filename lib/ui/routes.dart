@@ -47,17 +47,22 @@ void openAlbumOf(BuildContext context, Track t) {
 void openUserPlaylist(BuildContext context, UserPlaylist p) =>
     openPage(context, CollectionScreen.user(playlistId: p.id));
 
-void openLive(BuildContext context, String title, String owner,
-        List<Track> Function(LibraryController) live,
-        {String kind = 'Collection', Track? cover, bool removableFiles = false}) =>
-    openPage(
-      context,
-      CollectionScreen(
-        title: title,
-        owner: owner,
-        kind: kind,
-        cover: cover,
-        live: live,
-        removableFiles: removableFiles,
-      ),
-    );
+void openLive(
+  BuildContext context,
+  String title,
+  String owner,
+  List<Track> Function(LibraryController) live, {
+  String kind = 'Collection',
+  Track? cover,
+  bool removableFiles = false,
+}) => openPage(
+  context,
+  CollectionScreen(
+    title: title,
+    owner: owner,
+    kind: kind,
+    cover: cover,
+    live: live,
+    removableFiles: removableFiles,
+  ),
+);

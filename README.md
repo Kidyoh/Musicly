@@ -4,6 +4,9 @@ A monochrome, Material 3 music player for Android, iOS and web, built with Flutt
 
 ## Music sources
 
+- **Live radio** ([Radio Browser](https://www.radio-browser.info)): tens of thousands of real
+  stations worldwide, full songs as they're broadcast, "near you" by phone region, genres and search.
+- **Free full songs** ([Audius](https://audius.co)): full-length tracks from independent artists.
 - **Deezer catalog**: real worldwide and genre charts, artists, albums and playlists with
   free 30-second previews (no account or API key). "Play full song on Deezer" opens the full track.
 - **Your phone's music** (Android): one tap scans the phone's library and plays full songs with
@@ -28,9 +31,12 @@ A monochrome, Material 3 music player for Android, iOS and web, built with Flutt
 ```
 flutter pub get
 flutter run
-flutter build apk --release --split-per-abi
+flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/symbols
 flutter build web --release --no-web-resources-cdn
 ```
+
+Release builds are signed with the key in `android/key.properties` (not committed); without it
+they fall back to the debug key.
 
 Fonts: [Inter](https://rsms.me/inter/) (SIL OFL) and [Phosphor icons](https://phosphoricons.com) (MIT),
 licenses in `assets/fonts/`.

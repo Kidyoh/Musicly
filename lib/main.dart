@@ -23,14 +23,16 @@ Future<void> main() async {
   final api = DeezerApi();
   final library = LibraryController(api);
   final player = PlayerController(api)..onTrackStarted = library.recordPlay;
-  runApp(MultiProvider(
-    providers: [
-      ChangeNotifierProvider.value(value: library),
-      ChangeNotifierProvider.value(value: player),
-      ChangeNotifierProvider(create: (_) => LyricsController(player)),
-    ],
-    child: const MusiclyApp(),
-  ));
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: library),
+        ChangeNotifierProvider.value(value: player),
+        ChangeNotifierProvider(create: (_) => LyricsController(player)),
+      ],
+      child: const MusiclyApp(),
+    ),
+  );
 }
 
 class MusiclyApp extends StatelessWidget {
@@ -38,7 +40,9 @@ class MusiclyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mode = context.select<LibraryController, ThemeMode>((c) => c.themeMode);
+    final mode = context.select<LibraryController, ThemeMode>(
+      (c) => c.themeMode,
+    );
     return MaterialApp(
       title: 'Musicly',
       debugShowCheckedModeBanner: false,

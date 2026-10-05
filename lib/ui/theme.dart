@@ -68,7 +68,11 @@ ThemeData buildTheme(Brightness b) {
     outline: p.line,
     outlineVariant: p.line,
   );
-  final base = ThemeData(useMaterial3: true, colorScheme: scheme, fontFamily: 'Inter');
+  final base = ThemeData(
+    useMaterial3: true,
+    colorScheme: scheme,
+    fontFamily: 'Inter',
+  );
   return base.copyWith(
     scaffoldBackgroundColor: p.bg,
     splashFactory: InkSparkle.splashFactory,
@@ -79,7 +83,11 @@ ThemeData buildTheme(Brightness b) {
       scrolledUnderElevation: 0,
       centerTitle: true,
       titleTextStyle: TextStyle(
-          fontFamily: 'Inter', fontSize: 17, fontWeight: FontWeight.w600, color: p.ink),
+        fontFamily: 'Inter',
+        fontSize: 17,
+        fontWeight: FontWeight.w600,
+        color: p.ink,
+      ),
       iconTheme: IconThemeData(color: p.ink),
     ),
     iconTheme: IconThemeData(color: p.ink),
@@ -90,7 +98,8 @@ ThemeData buildTheme(Brightness b) {
       showDragHandle: true,
       dragHandleColor: p.line,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
@@ -103,8 +112,16 @@ ThemeData buildTheme(Brightness b) {
       selectedColor: p.ink,
       side: BorderSide.none,
       shape: const StadiumBorder(),
-      labelStyle: TextStyle(fontFamily: 'Inter', color: p.ink, fontWeight: FontWeight.w500),
-      secondaryLabelStyle: TextStyle(fontFamily: 'Inter', color: p.onInk, fontWeight: FontWeight.w600),
+      labelStyle: TextStyle(
+        fontFamily: 'Inter',
+        color: p.ink,
+        fontWeight: FontWeight.w500,
+      ),
+      secondaryLabelStyle: TextStyle(
+        fontFamily: 'Inter',
+        color: p.onInk,
+        fontWeight: FontWeight.w600,
+      ),
       showCheckmark: false,
     ),
     sliderTheme: SliderThemeData(
@@ -119,11 +136,13 @@ ThemeData buildTheme(Brightness b) {
       fillColor: p.card,
       hintStyle: TextStyle(color: p.sub),
       border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide.none,
+      ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
     ),
-    pageTransitionsTheme: const PageTransitionsTheme(builders: {
-      TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
-    }),
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {TargetPlatform.android: FadeForwardsPageTransitionsBuilder()},
+    ),
   );
 }
