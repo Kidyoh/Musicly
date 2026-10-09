@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Resources looked up by name (from Dart / audio_service: the notification
+     icon and its play, pause, next and previous buttons), which the release
+     resource shrinker can't see. Without the notification icon Android refuses
+     to show the media notification, and with it the lock-screen controls. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_musicly,@drawable/audio_service_*,@drawable/ic_w_*,@drawable/widget_*,@layout/widget_*,@xml/widget_*" />

@@ -16,7 +16,10 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+# Musicly ships one universal APK. Keep the build number above 3000: older
+# releases were split per ABI with build numbers 1000+ and 2000+, and Android
+# refuses to install a lower one over them ("App not installed").
+version: 1.4.0+3001
 
 environment:
   sdk: ^3.13.5
@@ -40,6 +43,10 @@ dependencies:
   file_picker: ^13.1.0
   http: ^1.6.0
   shared_preferences: ^2.5.5
+  web: ^1.1.1
+  url_launcher: ^6.3.3
+  home_widget: ^0.10.0
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:
@@ -51,6 +58,8 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.4.8
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -93,3 +102,48 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
+    - family: PhosphorRegular
+      fonts:
+        - asset: assets/fonts/Phosphor-Regular.ttf
+    - family: PhosphorFill
+      fonts:
+        - asset: assets/fonts/Phosphor-Fill.ttf
+    - family: PhosphorBold
+      fonts:
+        - asset: assets/fonts/Phosphor-Bold.ttf
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  image_path: assets/icon/icon.png
+  adaptive_icon_background: "#1C1D22"
+  adaptive_icon_foreground: assets/icon/foreground.png
+  adaptive_icon_monochrome: assets/icon/foreground.png
+  web:
+    generate: true
+    image_path: assets/icon/icon.png
+    background_color: "#1C1D22"
+    theme_color: "#1C1D22"
+
+flutter_native_splash:
+  color: "#FFFFFF"
+  image: assets/icon/splash_light.png
+  color_dark: "#0E0F12"
+  image_dark: assets/icon/splash_dark.png
+  android_12:
+    color: "#FFFFFF"
+    image: assets/icon/splash12_light.png
+    color_dark: "#0E0F12"
+    image_dark: assets/icon/splash12_dark.png
+  web: true

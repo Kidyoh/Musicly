@@ -1,0 +1,939 @@
+import 'package:flutter/material.dart';
+
+import 'dart:async';
+
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../models/telegram_channel.dart';
+import '../services/telegram_bot.dart';
+import '../state/library_controller.dart';
+import 'collection_screen.dart';
+import 'icons.dart';
+import 'sheets.dart';
+import 'theme.dart';
+import 'widgets.dart';
+
+/// Your Telegram channels, read straight from Telegram with a bot token.
+/// No server: the token is typed in here and stays on this phone.
+///
+/// Without [channelId] it shows every channel's songs together (or the only
+/// channel); with it, just that channel.
+class TelegramScreen extends StatelessWidget {
+  const TelegramScreen({super.key, this.channelId});
+  final int? channelId;
+
+  @override
+  Widget build(BuildContext context) {
+    final lib = context.watch<LibraryController>();
+    if (!lib.channelConnected) return const _ConnectView();
+    final one = channelId != null
+        ? lib.channel(channelId!)
+        : lib.channels.length == 1
+        ? lib.channels.first
+        : null;
+    if (channelId != null && one == null) {
+      // The channel was just removed.
+      return const Scaffold(body: SizedBox.shrink());
+    }
+    if (one != null) {
+      final id = one.id;
+      return CollectionScreen(
+        key: ValueKey('tg-$id-${one.name}'),
+        title: one.name,
+        owner: 'Your Telegram channel',
+        kind: 'Channel',
+        live: (l) => l.channel(id)?.tracks ?? const [],
+        onRefresh: lib.syncTelegram,
+        actions: [_ChannelMenuButton(channelId: id)],
+        banner: const _ChannelBanner(),
+      );
+    }
+    return CollectionScreen(
+      key: ValueKey('tg-all-${lib.channels.length}'),
+      title: 'Telegram',
+      owner: '${lib.channels.length} channels',
+      kind: 'Channels',
+      live: (l) => l.channelTracks,
+      onRefresh: lib.syncTelegram,
+      actions: const [_ChannelMenuButton()],
+      banner: const _ChannelsStrip(),
+    );
+  }
+}
+
+/// Opens the guided setup for connecting one more channel.
+void addTelegramChannel(BuildContext context) => Navigator.of(context)
+    .push(MaterialPageRoute(builder: (_) => const _ConnectView(adding: true)));
+
+/// Every connected channel as a chip, plus "Add channel", above the songs.
+class _ChannelsStrip extends StatelessWidget {
+  const _ChannelsStrip();
+
+  @override
+  Widget build(BuildContext context) {
+    final lib = context.watch<LibraryController>();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 44,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            children: [
+              for (final c in lib.channels)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ActionChip(
+                    avatar: const Icon(AppIcons.telegram, size: 16),
+                    label: Text('${c.name} · ${c.tracks.length}'),
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => TelegramScreen(channelId: c.id),
+                      ),
+                    ),
+                  ),
+                ),
+              ActionChip(
+                avatar: const Icon(AppIcons.add, size: 16),
+                label: const Text('Add channel'),
+                onPressed: () => addTelegramChannel(context),
+              ),
+            ],
+          ),
+        ),
+        const _ChannelBanner(),
+      ],
+    );
+  }
+}
+
+/// Import progress, errors, and how to add older songs.
+class _ChannelBanner extends StatelessWidget {
+  const _ChannelBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final lib = context.watch<LibraryController>();
+    final p = Palette.of(context);
+    Widget card(Widget child) => Container(
+      margin: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: p.card,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: child,
+    );
+
+    if (lib.downloading) {
+      return card(
+        Row(
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                value: lib.downloadTotal == 0
+                    ? null
+                    : lib.downloadDone / lib.downloadTotal,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Saving songs to this phone… ${lib.downloadDone} of ${lib.downloadTotal}',
+                style: TextStyle(color: p.sub),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (lib.downloadError != null) {
+      return card(
+        Text(lib.downloadError!, style: TextStyle(color: p.sub, height: 1.4)),
+      );
+    }
+    if (lib.importing) {
+      return card(
+        Row(
+          children: [
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Importing older posts… checked ${lib.importScanned}, found ${lib.importFound} songs',
+                style: TextStyle(color: p.sub),
+              ),
+            ),
+            TextButton(onPressed: lib.cancelImport, child: const Text('Stop')),
+          ],
+        ),
+      );
+    }
+    if (lib.backupNote != null) {
+      return card(
+        Row(
+          children: [
+            const Icon(AppIcons.check, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                lib.backupNote!,
+                style: TextStyle(color: p.sub, height: 1.4),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (!lib.backupReady) {
+      return card(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Keep your library safe',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Open @${lib.botUsername} in Telegram and press Start. Musicly then keeps a backup of your likes, '
+              'playlists and songs there, and brings it all back if you reinstall.',
+              style: TextStyle(color: p.sub, height: 1.45),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              children: [
+                FilledButton.tonal(
+                  onPressed: () => _openBot(lib.botUsername),
+                  child: Text('Open @${lib.botUsername}'),
+                ),
+                TextButton(
+                  onPressed: lib.syncTelegram,
+                  child: const Text('I pressed Start'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+    if (lib.channelError != null) {
+      return card(
+        Text(
+          lib.channelError!,
+          style: const TextStyle(color: Color(0xFFE5484D)),
+        ),
+      );
+    }
+    if (lib.channelTracks.isEmpty) {
+      return card(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Connected! Waiting for songs',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'New audio posts appear here automatically. To add songs posted earlier, '
+              'open the ⋯ menu and choose "Import older songs", or forward them to @${lib.botUsername}.',
+              style: TextStyle(color: p.sub, height: 1.45),
+            ),
+          ],
+        ),
+      );
+    }
+    if (lib.tooBigSkipped > 0) {
+      return card(
+        Text(
+          '${lib.tooBigSkipped} file${lib.tooBigSkipped == 1 ? ' is' : 's are'} over 20 MB, '
+          'which Telegram doesn\'t let bots stream, so ${lib.tooBigSkipped == 1 ? 'it was' : 'they were'} skipped.',
+          style: TextStyle(color: p.sub, height: 1.45),
+        ),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+}
+
+class _ChannelMenuButton extends StatelessWidget {
+  const _ChannelMenuButton({this.channelId});
+
+  /// The channel this page shows, or null on the all-channels page.
+  final int? channelId;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+    tooltip: 'Channel',
+    icon: const Icon(AppIcons.telegram),
+    onPressed: () => _menu(context),
+  );
+
+  void _menu(BuildContext context) {
+    final lib = context.read<LibraryController>();
+    showModalBottomSheet(
+      context: context,
+      useRootNavigator: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+              leading: const Icon(AppIcons.telegramOn),
+              title: Text(
+                channelId != null
+                    ? (lib.channel(channelId!)?.name ?? 'Telegram')
+                    : lib.channelName ?? 'Telegram',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              subtitle: Text('Read by @${lib.botUsername ?? 'your bot'}'),
+            ),
+            const Divider(),
+            if (lib.canDownload)
+              StatefulBuilder(
+                builder: (ctx, setSheet) => SwitchListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+                  secondary: const Icon(AppIcons.download),
+                  title: const Text('Save songs to this phone'),
+                  subtitle: Text(
+                    lib.notDownloaded == 0
+                        ? 'All songs saved in Music/Musicly'
+                        : '${lib.notDownloaded} not saved yet · plays offline once saved',
+                  ),
+                  value: lib.autoDownload,
+                  onChanged: (v) {
+                    lib.setAutoDownload(v);
+                    setSheet(() {});
+                  },
+                ),
+              ),
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+              leading: const Icon(AppIcons.refresh),
+              title: const Text('Check for new songs'),
+              onTap: () {
+                Navigator.pop(ctx);
+                lib.syncTelegram();
+              },
+            ),
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+              leading: const Icon(AppIcons.history),
+              title: const Text('Import older songs'),
+              subtitle: Text(
+                lib.canImport
+                    ? 'Reads the channel\'s earlier posts'
+                    : 'First open @${lib.botUsername} in Telegram and press Start',
+              ),
+              onTap: () async {
+                Navigator.pop(ctx);
+                if (!lib.canImport) {
+                  await lib.syncTelegram(); // maybe they just pressed Start
+                }
+                if (!context.mounted) return;
+                if (lib.canImport) {
+                  final c = channelId != null
+                      ? lib.channel(channelId!)
+                      : lib.channels.length == 1
+                      ? lib.channels.first
+                      : await _pickChannel(context, lib);
+                  if (c != null) lib.importTelegramHistory(c);
+                } else {
+                  _openBot(lib.botUsername);
+                  toast(
+                    context,
+                    'Press Start in the bot chat, then come back and import.',
+                  );
+                }
+              },
+            ),
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+              leading: const Icon(AppIcons.add),
+              title: const Text('Add another channel'),
+              subtitle: const Text('The same bot can read all your channels'),
+              onTap: () {
+                Navigator.pop(ctx);
+                addTelegramChannel(context);
+              },
+            ),
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+              leading: const Icon(AppIcons.backup),
+              title: const Text('Back up now'),
+              subtitle: Text(_backupLabel(lib)),
+              enabled: lib.backupReady,
+              onTap: () async {
+                Navigator.pop(ctx);
+                final ok = await lib.backupNow();
+                if (context.mounted) {
+                  toast(
+                    context,
+                    ok
+                        ? 'Library backed up to Telegram'
+                        : 'Backup failed. Try again.',
+                  );
+                }
+              },
+            ),
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+              leading: const Icon(AppIcons.restore),
+              title: const Text('Restore from backup'),
+              subtitle: const Text(
+                'Replaces this phone\'s library with the saved one',
+              ),
+              enabled: lib.backupReady,
+              onTap: () async {
+                Navigator.pop(ctx);
+                final ok = await lib.restoreFromTelegram();
+                if (context.mounted) {
+                  toast(
+                    context,
+                    ok ? 'Library restored' : 'No backup found yet.',
+                  );
+                }
+              },
+            ),
+            if (channelId != null && lib.channels.length > 1)
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+                leading: const Icon(AppIcons.trash),
+                title: const Text('Remove this channel'),
+                subtitle: const Text('Songs saved on this phone stay'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Navigator.maybePop(context);
+                  lib.removeChannel(channelId!);
+                },
+              ),
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+              leading: const Icon(AppIcons.close),
+              title: Text(
+                lib.channels.length > 1
+                    ? 'Disconnect all channels'
+                    : 'Disconnect channel',
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                lib.disconnectTelegram();
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Future<TelegramChannel?> _pickChannel(
+  BuildContext context,
+  LibraryController lib,
+) => showModalBottomSheet<TelegramChannel>(
+  context: context,
+  useRootNavigator: true,
+  builder: (ctx) => SafeArea(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const ListTile(
+          contentPadding: EdgeInsets.symmetric(horizontal: 24),
+          title: Text(
+            'Import older songs from…',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
+        for (final c in lib.channels)
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+            leading: const Icon(AppIcons.telegram),
+            title: Text(c.name),
+            subtitle: Text(count(c.tracks.length, 'song')),
+            onTap: () => Navigator.pop(ctx, c),
+          ),
+        const SizedBox(height: 8),
+      ],
+    ),
+  ),
+);
+
+String _backupLabel(LibraryController lib) {
+  if (!lib.backupReady) return 'Press Start in your bot first';
+  if (lib.backingUp) return 'Backing up…';
+  final at = lib.lastBackup;
+  if (at == null) return 'Not backed up yet';
+  final mins = DateTime.now().difference(at).inMinutes;
+  if (mins < 1) return 'Last backup: just now';
+  if (mins < 60) return 'Last backup: $mins min ago';
+  if (mins < 60 * 24) return 'Last backup: ${mins ~/ 60} h ago';
+  return 'Last backup: ${at.toLocal().toString().substring(0, 10)}';
+}
+
+void _openBot(String? username) {
+  if (username == null) return;
+  launchUrl(
+    Uri.parse('https://t.me/$username?start=musicly'),
+    mode: LaunchMode.externalApplication,
+  );
+}
+
+class _ConnectView extends StatefulWidget {
+  const _ConnectView({this.adding = false});
+
+  /// Connecting one more channel with the bot that's already set up.
+  final bool adding;
+  @override
+  State<_ConnectView> createState() => _ConnectViewState();
+}
+
+/// Guided setup for people who have never made a bot: open BotFather, paste
+/// the token, tap one link to add the bot to a channel, and the channel
+/// shows up here by itself.
+class _ConnectViewState extends State<_ConnectView> {
+  final _token = TextEditingController();
+  final _channel = TextEditingController();
+  bool _busy = false;
+  bool _checking = false;
+  bool _showToken = false;
+  bool _typeChannel = false;
+  String? _error;
+  String? _tokenError;
+
+  /// The checked bot: its username, once the token is valid.
+  String? _botName;
+  String _checkedToken = '';
+  List<({int id, String title})> _channels = [];
+  Timer? _watch;
+  Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _token.addListener(_tokenChanged);
+    // The bot is already set up: skip straight to adding a channel.
+    final existing = context.read<LibraryController>().bot?.token;
+    if (existing != null) _token.text = existing;
+  }
+
+  @override
+  void dispose() {
+    _watch?.cancel();
+    _debounce?.cancel();
+    _token.dispose();
+    _channel.dispose();
+    super.dispose();
+  }
+
+  String get _cleanToken => _token.text.trim().replaceAll(RegExp(r'\s'), '');
+
+  void _tokenChanged() {
+    if (_cleanToken == _checkedToken) return;
+    _debounce?.cancel();
+    _watch?.cancel();
+    setState(() {
+      _botName = null;
+      _channels = [];
+      _tokenError = null;
+    });
+    if (!RegExp(r'^\d+:[\w-]{20,}$').hasMatch(_cleanToken)) return;
+    _debounce = Timer(const Duration(milliseconds: 400), _checkToken);
+  }
+
+  Future<void> _checkToken() async {
+    final token = _cleanToken;
+    setState(() => _checking = true);
+    String? name;
+    String? err;
+    try {
+      final me = await TelegramBot(token).getMe();
+      name = me['username'] as String?;
+    } on TelegramError catch (e) {
+      err = e.code == 401 || e.code == 404
+          ? 'That token isn\'t right. Copy it again from BotFather.'
+          : e.description;
+    } catch (_) {
+      err = 'Could not reach Telegram. Check your connection.';
+    }
+    if (!mounted || token != _cleanToken) return;
+    setState(() {
+      _checking = false;
+      _checkedToken = token;
+      _botName = name;
+      _tokenError = err;
+    });
+    if (name != null) {
+      _findChannels();
+      _watch = Timer.periodic(
+        const Duration(seconds: 3),
+        (_) => _findChannels(),
+      );
+    }
+  }
+
+  Future<void> _findChannels() async {
+    final token = _checkedToken;
+    try {
+      final lib = context.read<LibraryController>();
+      final found = (await TelegramBot(
+        token,
+      ).adminChannels()).where((c) => lib.channel(c.id) == null).toList();
+      if (!mounted || token != _checkedToken) return;
+      if (found.length != _channels.length ||
+          found.indexed.any((e) => _channels[e.$1].id != e.$2.id)) {
+        setState(() => _channels = found);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _paste() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text ?? '';
+    final match = RegExp(r'\d+:[\w-]{20,}').firstMatch(text);
+    _token.text = match?.group(0) ?? text.trim();
+  }
+
+  void _open(String url) =>
+      launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+
+  void _addToChannel() => _open(
+    'https://t.me/$_botName?startchannel&admin=post_messages+edit_messages+delete_messages',
+  );
+
+  Future<void> _connect(String channel) async {
+    if (_botName == null) {
+      setState(() => _error = 'Paste your bot token first.');
+      return;
+    }
+    if (channel.trim().isEmpty) {
+      setState(() => _error = 'Enter your channel.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final lib = context.read<LibraryController>();
+    final err = await lib.connectTelegram(_checkedToken, channel);
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _error = err;
+    });
+    if (err == null) {
+      toast(context, 'Connected to ${lib.channels.last.name}');
+      if (widget.adding) Navigator.maybePop(context);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    const done = Color(0xFF30A46C);
+
+    Widget step(int n, String title, String text, {bool ok = false}) => Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 26,
+            height: 26,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: ok ? done : p.ink,
+              shape: BoxShape.circle,
+            ),
+            child: ok
+                ? const Icon(AppIcons.check, color: Colors.white, size: 15)
+                : Text(
+                    '$n',
+                    style: TextStyle(
+                      color: p.onInk,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(text, style: TextStyle(color: p.sub, height: 1.45)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    Widget indent(Widget child) => Padding(
+      padding: const EdgeInsets.only(left: 38, bottom: 24),
+      child: child,
+    );
+
+    final botReady = _botName != null;
+
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(AppIcons.back),
+          onPressed: () => Navigator.maybePop(context),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: p.ink,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Icon(AppIcons.telegramOn, color: p.onInk, size: 36),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Text(
+            widget.adding ? 'Add another channel' : 'Your Telegram channel',
+            style: const TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.6,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            widget.adding
+                ? 'Your bot is ready. Add it to another channel you run and pick it below.'
+                : 'Play the full songs from any channel you run. Takes about a minute — just follow the three steps.',
+            style: TextStyle(color: p.sub, height: 1.45),
+          ),
+          const SizedBox(height: 28),
+
+          // 1. Make a bot
+          step(
+            1,
+            'Make your music bot',
+            'Tap the button, press Start, send /newbot, then pick any name and a username ending in "bot". BotFather replies with a long token — copy it.',
+            ok: botReady,
+          ),
+          indent(
+            PillButton(
+              icon: AppIcons.external,
+              label: 'Open BotFather',
+              filled: !botReady,
+              onPressed: () => _open('https://t.me/BotFather'),
+            ),
+          ),
+
+          // 2. Paste the token
+          step(
+            2,
+            'Paste the token',
+            'Come back here and paste what BotFather sent.',
+            ok: botReady,
+          ),
+          indent(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _token,
+                  obscureText: !_showToken,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  decoration: InputDecoration(
+                    hintText: '123456:ABC-…',
+                    prefixIcon: const Icon(AppIcons.key, size: 20),
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                            _showToken ? AppIcons.eyeOff : AppIcons.eye,
+                            size: 18,
+                          ),
+                          tooltip: _showToken ? 'Hide' : 'Show',
+                          onPressed: () =>
+                              setState(() => _showToken = !_showToken),
+                        ),
+                        TextButton(
+                          onPressed: _paste,
+                          child: const Text('Paste'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (_checking)
+                  Text('Checking…', style: TextStyle(color: p.sub))
+                else if (_tokenError != null)
+                  Text(
+                    _tokenError!,
+                    style: const TextStyle(color: Color(0xFFE5484D)),
+                  )
+                else if (botReady)
+                  Text(
+                    'Bot ready: @$_botName',
+                    style: const TextStyle(
+                      color: done,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          // 3. Add it to the channel
+          step(
+            3,
+            'Add it to your channel',
+            'Tap the button, choose your channel and confirm. Your channel appears below by itself.',
+            ok: _channels.isNotEmpty,
+          ),
+          indent(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                PillButton(
+                  icon: AppIcons.add,
+                  label: 'Add bot to my channel',
+                  onPressed: botReady ? _addToChannel : null,
+                ),
+                if (botReady && _channels.isEmpty && !_typeChannel)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 14),
+                    child: Row(
+                      children: [
+                        const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Waiting for your channel…',
+                            style: TextStyle(color: p.sub),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                for (final c in _channels)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Material(
+                      color: p.card,
+                      borderRadius: BorderRadius.circular(16),
+                      child: ListTile(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        leading: const Icon(AppIcons.telegram),
+                        title: Text(
+                          c.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: Text(
+                          _busy ? 'Connecting…' : 'Tap to connect',
+                        ),
+                        trailing: const Icon(AppIcons.chevron, size: 18),
+                        onTap: _busy ? null : () => _connect('${c.id}'),
+                      ),
+                    ),
+                  ),
+                if (botReady)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: () =>
+                          setState(() => _typeChannel = !_typeChannel),
+                      child: Text(
+                        _typeChannel
+                            ? 'Hide'
+                            : 'Already added it? Type the channel instead',
+                      ),
+                    ),
+                  ),
+                if (_typeChannel) ...[
+                  TextField(
+                    controller: _channel,
+                    autocorrect: false,
+                    decoration: const InputDecoration(
+                      hintText: 'Channel: @name or t.me link',
+                      prefixIcon: Icon(AppIcons.link, size: 20),
+                    ),
+                    onSubmitted: _connect,
+                  ),
+                  const SizedBox(height: 12),
+                  PillButton(
+                    icon: AppIcons.telegram,
+                    label: _busy ? 'Connecting…' : 'Connect channel',
+                    onPressed: _busy ? null : () => _connect(_channel.text),
+                  ),
+                ],
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Text(
+                      _error!,
+                      style: const TextStyle(color: Color(0xFFE5484D)),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: p.card,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(
+              'Reinstalled Musicly? Paste the same token and pick the same channel. '
+              'Your likes, playlists and channel songs come back automatically.',
+              style: TextStyle(color: p.sub, height: 1.45),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Bots can play songs up to 20 MB, which covers normal MP3 and M4A files. '
+            'Your token stays on this phone.',
+            style: TextStyle(color: p.sub, fontSize: 12, height: 1.45),
+          ),
+        ],
+      ),
+    );
+  }
+}

@@ -1,0 +1,44 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@1&display=block">
+<link rel="stylesheet" href="brand.css"><link rel="stylesheet" href="m.css">
+<style>
+body { background: radial-gradient(1000px 600px at 20% 55%, rgba(255,107,74,.16), transparent 70%), #0B0C0F; color: #fff; }
+.lines { position: absolute; left: 72px; top: 205px; right: 40px; }
+.ln { font-weight: 800; font-size: 86px; letter-spacing: -3.8px; line-height: 1.12; color: #2B2D35; white-space: nowrap; }
+.ln.past { color: #4A4D58; }
+.ln.now { color: #fff; position: relative; display: inline-block; padding: 4px 26px 10px; margin-left: -26px; border-radius: 24px; background: linear-gradient(90deg, rgba(255,107,74,.95), rgba(255,107,74,.55)); }
+.ts { font-family: 'JetBrains Mono', monospace; font-size: 18px; color: #5c606c; letter-spacing: 1px; margin-right: 18px; vertical-align: middle; }
+.tag { position: absolute; right: 72px; top: 78px; font-weight: 700; font-size: 20px; letter-spacing: 2.5px; color: var(--coral); }
+.player { position: absolute; left: 72px; right: 72px; bottom: 72px; height: 150px; background: #17181C; border-radius: 30px; display: flex; align-items: center; gap: 22px; padding: 0 28px; box-shadow: 0 0 0 1px rgba(255,255,255,.06); }
+.player .art { width: 96px; height: 96px; border-radius: 18px; }
+.player .scrub { color: #fff; height: 40px; flex: 1; }
+.pp { width: 70px; height: 70px; border-radius: 50%; background: #fff; color: var(--ink); display: grid; place-items: center; font-size: 30px; flex: none; }
+.side { position: absolute; right: 72px; bottom: 262px; text-align: right; }
+.side .serif { font-size: 76px; line-height: .95; color: #fff; }
+.chips { position: absolute; left: 72px; bottom: 262px; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+.chips .chip { background: #1C1D22; color: #E8E9EE; font-size: 19px; padding: 12px 20px; }
+.chips .chip .i { color: var(--coral); }
+</style></head><body>
+<div class="brand" style="left:72px;top:66px;color:#fff"><div class="logo"></div>Musicly</div>
+<div class="tag">03 · LYRICS</div>
+<div class="lines">
+  <div class="ln past"><span class="ts">0:42</span>City lights are fading,</div>
+  <div class="ln past"><span class="ts">0:47</span>our song on the radio,</div>
+  <div class="ln now"><span class="ts" style="color:#fff;opacity:.8">0:51</span>singing with the city</div>
+  <div class="ln"><span class="ts">0:56</span>till the morning comes</div>
+  <div class="ln"><span class="ts">1:02</span>and we let it go.</div>
+</div>
+<div class="side"><div class="serif">Every word,<br><span style="color:var(--coral)">right on time.</span></div></div>
+<div class="chips">
+  <span class="chip"><span class="i">&#xe3d2;</span>Tap a line to jump there</span>
+  <span class="chip"><span class="b" style="color:var(--coral)">&#xe3d4;</span>Nudge timing ±0.5s</span>
+  <span class="chip"><span class="i">&#xebe0;</span>Found for you automatically</span>
+</div>
+<div class="player">
+  <div class="art a1"></div>
+  <div style="width:250px"><div style="font-weight:800;font-size:26px;letter-spacing:-.6px">Addis Nights</div><div style="color:var(--sub);font-size:18px;margin-top:4px">Selam Band</div></div>
+  <div class="scrub" data-n="70" data-at="0.36"></div>
+  <div class="pp"><span class="f">&#xe39e;</span></div>
+</div>
+<script src="brand.js"></script>
+</body></html>

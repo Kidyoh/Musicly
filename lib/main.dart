@@ -3,54 +3,74 @@ import 'package:flutter/material.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:provider/provider.dart';
 
+import 'services/home_widgets.dart';
+import 'state/jam_controller.dart';
+import 'state/library_controller.dart';
+import 'state/lyrics_controller.dart';
 import 'state/player_controller.dart';
-import 'ui/home_screen.dart';
+import 'ui/shell.dart';
+import 'ui/theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (!kIsWeb) {
     await JustAudioBackground.init(
-      androidNotificationChannelId: 'com.musicly.audio',
-      androidNotificationChannelName: 'Musicly playback',
+      androidNotificationChannelId: 'com.musicly.player',
+      androidNotificationChannelName: 'Now playing',
+      androidNotificationChannelDescription:
+          'Playback controls for the notification shade and lock screen',
       androidNotificationOngoing: true,
+      androidNotificationIcon: 'drawable/ic_stat_musicly',
+      notificationColor: const Color(0xFF1C1D22),
+      preloadArtwork: true,
+      artDownscaleWidth: 512,
+      artDownscaleHeight: 512,
     );
   }
-  runApp(ChangeNotifierProvider(
-    create: (_) => PlayerController(),
-    child: const MusiclyApp(),
-  ));
+  final library = LibraryController();
+  final player = PlayerController()
+    ..onTrackStarted = library.recordPlay
+    ..telegramUrl = ((fileId) => library.bot!.fileUrl(fileId))
+    ..localCopy = library.downloadedCopy;
+  library.onRestored = player.reloadSettings;
+  // Pending library changes are backed up when the app leaves the screen.
+  AppLifecycleListener(onHide: library.flushBackup);
+  // Home-screen widgets follow whatever is playing.
+  player.addListener(
+    () => HomeWidgets.update(
+      player.current,
+      playing: player.isPlaying,
+      onAir: player.nowOnAir,
+    ),
+  );
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: library),
+        ChangeNotifierProvider.value(value: player),
+        ChangeNotifierProvider(create: (_) => LyricsController(player)),
+        ChangeNotifierProvider(create: (_) => JamController(library, player)),
+      ],
+      child: const MusiclyApp(),
+    ),
+  );
 }
 
-class MusiclyApp extends StatefulWidget {
+class MusiclyApp extends StatelessWidget {
   const MusiclyApp({super.key});
-  @override
-  State<MusiclyApp> createState() => _MusiclyAppState();
-}
-
-class _MusiclyAppState extends State<MusiclyApp> {
-  ThemeMode _mode = ThemeMode.system;
-
-  ThemeData _theme(Brightness b) => ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF5B5BD6), brightness: b),
-        appBarTheme: const AppBarTheme(scrolledUnderElevation: 0),
-      );
 
   @override
   Widget build(BuildContext context) {
+    final mode = context.select<LibraryController, ThemeMode>(
+      (c) => c.themeMode,
+    );
     return MaterialApp(
       title: 'Musicly',
       debugShowCheckedModeBanner: false,
-      theme: _theme(Brightness.light),
-      darkTheme: _theme(Brightness.dark),
-      themeMode: _mode,
-      home: HomeScreen(
-        onToggleTheme: () => setState(() {
-          final dark = Theme.of(context).brightness == Brightness.dark;
-          _mode = dark ? ThemeMode.light : ThemeMode.dark;
-        }),
-      ),
+      theme: buildTheme(Brightness.light),
+      darkTheme: buildTheme(Brightness.dark),
+      themeMode: mode,
+      home: const Shell(),
     );
   }
 }

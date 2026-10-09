@@ -1,231 +1,430 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../models/track.dart';
+import '../state/jam_controller.dart';
+import '../state/library_controller.dart';
 import '../state/player_controller.dart';
-import 'mini_player.dart';
+import 'collection_screen.dart';
+import 'icons.dart';
+import 'jam_screen.dart';
+import 'nav.dart';
+import 'radio_screen.dart';
+import 'telegram_screen.dart';
+import 'routes.dart';
+import 'sheets.dart';
+import 'theme.dart';
 import 'widgets.dart';
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.onToggleTheme});
-  final VoidCallback onToggleTheme;
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key, required this.onOpenTab});
+  final ValueChanged<int> onOpenTab;
 
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  int _tab = 0;
-  final _search = TextEditingController();
-
-  @override
-  void dispose() {
-    _search.dispose();
-    super.dispose();
+  String _greeting() {
+    final h = DateTime.now().hour;
+    if (h < 5) return 'Up late?';
+    if (h < 12) return 'Good morning';
+    if (h < 18) return 'Good afternoon';
+    return 'Good evening';
   }
 
   @override
   Widget build(BuildContext context) {
-    final c = context.watch<PlayerController>();
-    final titles = ['Library', 'Discover', 'Favorites'];
+    final lib = context.watch<LibraryController>();
+    final c = context.read<PlayerController>();
+    final p = Palette.of(context);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final songs = lib.allSongs;
+    final most = lib.mostPlayed.take(5).toList();
+
+    Widget songRows(List<Track> list, {int max = 5}) => Column(
+      children: [
+        for (var i = 0; i < list.length.clamp(0, max); i++)
+          ArtTrackRow(track: list[i], onTap: () => c.playQueue(list, i)),
+      ],
+    );
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text(titles[_tab],
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 28)),
-        centerTitle: false,
-        actions: [
-          if (_tab == 0)
-            IconButton(
-                tooltip: 'Add music from device',
-                onPressed: c.pickLocalFiles,
-                icon: const Icon(Icons.library_add_rounded)),
-          IconButton(
-              tooltip: 'Toggle theme',
-              onPressed: widget.onToggleTheme,
-              icon: const Icon(Icons.contrast_rounded)),
-        ],
-      ),
-      body: IndexedStack(index: _tab, children: [
-        _LibraryTab(c),
-        _DiscoverTab(c, _search),
-        _FavoritesTab(c),
-      ]),
-      bottomNavigationBar: Column(mainAxisSize: MainAxisSize.min, children: [
-        const MiniPlayer(),
-        NavigationBar(
-          selectedIndex: _tab,
-          onDestinationSelected: (i) => setState(() => _tab = i),
-          destinations: const [
-            NavigationDestination(
-                icon: Icon(Icons.library_music_outlined),
-                selectedIcon: Icon(Icons.library_music_rounded),
-                label: 'Library'),
-            NavigationDestination(
-                icon: Icon(Icons.explore_outlined),
-                selectedIcon: Icon(Icons.explore_rounded),
-                label: 'Discover'),
-            NavigationDestination(
-                icon: Icon(Icons.favorite_border_rounded),
-                selectedIcon: Icon(Icons.favorite_rounded),
-                label: 'Favorites'),
-          ],
+      body: SafeArea(
+        bottom: false,
+        child: RefreshIndicator(
+          onRefresh: () async {
+            await Future.wait([lib.loadHome(), lib.syncTelegram()]);
+          },
+          child: ListView(
+            padding: const EdgeInsets.only(bottom: 28),
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 8, 0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _greeting(),
+                            style: TextStyle(color: p.sub, fontSize: 14),
+                          ),
+                          const SizedBox(height: 2),
+                          const Text(
+                            'Musicly',
+                            style: TextStyle(
+                              fontSize: 30,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.8,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (JamController.supported)
+                      IconButton(
+                        tooltip: 'Jam',
+                        onPressed: () => openPage(context, const JamScreen()),
+                        icon: Icon(
+                          context.watch<JamController>().active
+                              ? AppIcons.jamOn
+                              : AppIcons.jam,
+                        ),
+                      ),
+                    IconButton(
+                      tooltip: 'Sound',
+                      onPressed: () => showSound(context),
+                      icon: const Icon(AppIcons.sound),
+                    ),
+                    IconButton(
+                      tooltip: 'Theme',
+                      onPressed: lib.toggleTheme,
+                      icon: Icon(dark ? AppIcons.sun : AppIcons.moon),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              const _JamBanner(),
+              _ForYouCard(lib: lib),
+              if (songs.isEmpty) const _GetStarted(),
+              if (lib.recent.isNotEmpty) ...[
+                const SectionHeader('Jump back in'),
+                HRow(
+                  height: 196,
+                  children: [
+                    for (var i = 0; i < lib.recent.length.clamp(0, 12); i++)
+                      CoverCard(
+                        title: lib.recent[i].title,
+                        subtitle: lib.recent[i].artist,
+                        art: lib.recent[i].isRadio
+                            ? StationArt(lib.recent[i], size: 148, radius: 16)
+                            : Artwork(lib.recent[i], size: 148, radius: 16),
+                        onTap: () => c.playQueue(lib.recent, i),
+                      ),
+                  ],
+                ),
+              ],
+              for (final ch in lib.channels)
+                if (ch.tracks.isNotEmpty) ...[
+                  SectionHeader(
+                    ch.name,
+                    subtitle: 'New in your Telegram channel',
+                    action: 'See all',
+                    onAction: () =>
+                        openPage(context, TelegramScreen(channelId: ch.id)),
+                  ),
+                  songRows(ch.tracks),
+                ],
+              if (lib.stations.isNotEmpty) ...[
+                SectionHeader(
+                  'Live radio',
+                  subtitle: 'Real stations, streaming now',
+                  action: 'See all',
+                  onAction: () => openPage(context, const RadioScreen()),
+                ),
+                HRow(
+                  height: 178,
+                  children: [
+                    for (var i = 0; i < lib.stations.length; i++)
+                      StationCard(
+                        station: lib.stations[i],
+                        onTap: () => c.playQueue(lib.stations, i),
+                      ),
+                  ],
+                ),
+              ],
+              if (lib.artists.isNotEmpty) ...[
+                const SectionHeader('Your artists'),
+                HRow(
+                  height: 148,
+                  children: [
+                    for (final (name, list) in lib.artists.take(15))
+                      ArtistBubble(
+                        name: name,
+                        cover: list.firstWhere(
+                          (t) => t.artworkUrl != null || t.mediaId != null,
+                          orElse: () => list.first,
+                        ),
+                        subtitle: count(list.length, 'song'),
+                        onTap: () => openArtist(context, name),
+                      ),
+                  ],
+                ),
+              ],
+              if (most.isNotEmpty) ...[
+                SectionHeader(
+                  'On repeat',
+                  subtitle: 'Your most played',
+                  action: 'See all',
+                  onAction: () => onOpenTab(3),
+                ),
+                songRows(most),
+              ],
+              if (lib.localTracks.isNotEmpty) ...[
+                SectionHeader(
+                  'On this phone',
+                  action: 'See all',
+                  onAction: () => openLive(
+                    context,
+                    'On this phone',
+                    'Your music',
+                    (l) => l.localTracks,
+                    removableFiles: true,
+                  ),
+                ),
+                songRows(lib.localTracks),
+              ],
+            ],
+          ),
         ),
-      ]),
+      ),
     );
   }
 }
 
-class _LibraryTab extends StatefulWidget {
-  const _LibraryTab(this.c);
-  final PlayerController c;
-  @override
-  State<_LibraryTab> createState() => _LibraryTabState();
-}
-
-class _LibraryTabState extends State<_LibraryTab> {
-  String _q = '';
+/// Shown until there's music: connect Telegram or add phone songs.
+class _GetStarted extends StatelessWidget {
+  const _GetStarted();
 
   @override
   Widget build(BuildContext context) {
-    final c = widget.c;
-    if (c.localTracks.isEmpty && c.recent.isEmpty) {
-      return EmptyState(
-        icon: Icons.folder_open_rounded,
-        text: 'Your library is empty.\nAdd songs from your device to start listening.',
-        action: FilledButton.icon(
-            onPressed: c.pickLocalFiles,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Add music')),
-      );
-    }
-    final tracks = c.localTracks
-        .where((t) => t.title.toLowerCase().contains(_q.toLowerCase()))
-        .toList();
-    return ListView(children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-        child: SearchBar(
-          hintText: 'Search your library',
-          leading: const Icon(Icons.search_rounded),
-          elevation: const WidgetStatePropertyAll(0),
-          onChanged: (v) => setState(() => _q = v),
+    final p = Palette.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: p.card,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Bring your music',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Connect your Telegram channel or add the songs on this phone. '
+              'Your mix, artists and hotlist are built from them.',
+              style: TextStyle(color: p.sub, height: 1.5),
+            ),
+            const SizedBox(height: 14),
+            PillButton(
+              icon: AppIcons.telegram,
+              label: 'Connect Telegram',
+              onPressed: () => openPage(context, const TelegramScreen()),
+            ),
+          ],
         ),
       ),
-      if (c.recent.isNotEmpty && _q.isEmpty) ...[
-        const _Header('Recently played'),
-        SizedBox(
-          height: 150,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: c.recent.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 12),
-            itemBuilder: (_, i) => GestureDetector(
-              onTap: () => c.playQueue(c.recent, i),
-              child: SizedBox(
-                width: 104,
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Artwork(c.recent[i], size: 104, radius: 16),
-                  const SizedBox(height: 6),
-                  Text(c.recent[i].title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
-                ]),
-              ),
+    );
+  }
+}
+
+/// Big dark card for the personalised mix.
+class _ForYouCard extends StatelessWidget {
+  const _ForYouCard({required this.lib});
+  final LibraryController lib;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.read<PlayerController>();
+    final mix = lib.forYou;
+    final p = Palette.of(context);
+    final covers = <Track>[];
+    final seen = <String>{};
+    for (final t in mix) {
+      final key =
+          t.artworkUrl ?? (t.mediaId == null ? null : 'ms:${t.mediaId}');
+      if (key != null && seen.add(key)) covers.add(t);
+      if (covers.length == 3) break;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Material(
+        color: const Color(0xFF1C1D22),
+        borderRadius: BorderRadius.circular(24),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: mix.isEmpty
+              ? null
+              : () => openPage(
+                  context,
+                  CollectionScreen(
+                    title: 'Your mix',
+                    owner: lib.forYouReason ?? 'Musicly',
+                    kind: 'Made for you',
+                    cover: covers.isEmpty ? null : covers.first,
+                    live: (l) => l.forYou,
+                  ),
+                ),
+          child: SizedBox(
+            height: 176,
+            child: Stack(
+              children: [
+                // Fanned covers on the right.
+                for (var i = covers.length - 1; i >= 0; i--)
+                  Positioned(
+                    right: 18.0 + i * 34,
+                    top: 26.0 + i * 8,
+                    child: Transform.rotate(
+                      angle: (i - 1) * 0.08,
+                      child: Opacity(
+                        opacity: 1 - i * 0.22,
+                        child: Artwork(
+                          covers[i],
+                          size: 112 - i * 10.0,
+                          radius: 14,
+                          shadow: true,
+                        ),
+                      ),
+                    ),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            AppIcons.sparkle,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'MADE FOR YOU',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.7),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Your mix',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.6,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      SizedBox(
+                        width: 170,
+                        child: Text(
+                          lib.forYouReason ?? 'Connect Telegram or add phone music to get your mix',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.6),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      GestureDetector(
+                        onTap: mix.isEmpty ? null : () => c.playShuffled(mix),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 9,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(AppIcons.play, size: 14, color: p.dock),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Play mix',
+                                style: TextStyle(
+                                  color: p.dock,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ),
-      ],
-      if (tracks.isNotEmpty) ...[
-        _Header('Songs · ${tracks.length}'),
-        for (var i = 0; i < tracks.length; i++)
-          TrackTile(
-            track: tracks[i],
-            onTap: () => c.playQueue(tracks, i),
-            onRemove: () => c.removeLocal(tracks[i]),
-          ),
-      ],
-    ]);
-  }
-}
-
-class _DiscoverTab extends StatelessWidget {
-  const _DiscoverTab(this.c, this.search);
-  final PlayerController c;
-  final TextEditingController search;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-        child: SearchBar(
-          controller: search,
-          hintText: 'Search songs, artists',
-          leading: const Icon(Icons.search_rounded),
-          elevation: const WidgetStatePropertyAll(0),
-          onSubmitted: c.searchOnline,
-          trailing: [
-            if (search.text.isNotEmpty)
-              IconButton(
-                  icon: const Icon(Icons.close_rounded),
-                  onPressed: () {
-                    search.clear();
-                    c.loadTrending();
-                  }),
-          ],
-        ),
       ),
-      Expanded(
-        child: c.onlineLoading
-            ? const Center(child: CircularProgressIndicator())
-            : c.onlineError != null && c.onlineTracks.isEmpty
-                ? EmptyState(
-                    icon: Icons.cloud_off_rounded,
-                    text: c.onlineError!,
-                    action: OutlinedButton(
-                        onPressed: c.loadTrending, child: const Text('Retry')))
-                : ListView.builder(
-                    itemCount: c.onlineTracks.length,
-                    itemBuilder: (_, i) => TrackTile(
-                      track: c.onlineTracks[i],
-                      onTap: () => c.playQueue(c.onlineTracks, i),
-                    ),
-                  ),
-      ),
-    ]);
-  }
-}
-
-class _FavoritesTab extends StatelessWidget {
-  const _FavoritesTab(this.c);
-  final PlayerController c;
-
-  @override
-  Widget build(BuildContext context) {
-    if (c.favorites.isEmpty) {
-      return const EmptyState(
-          icon: Icons.favorite_border_rounded,
-          text: 'Songs you favorite show up here.\nUse the ⋯ menu on any song.');
-    }
-    return ListView.builder(
-      itemCount: c.favorites.length,
-      itemBuilder: (_, i) => TrackTile(
-          track: c.favorites[i], onTap: () => c.playQueue(c.favorites, i)),
     );
   }
 }
 
-class _Header extends StatelessWidget {
-  const _Header(this.text);
-  final String text;
+/// Shown on Home while you're in a Jam, so it's one tap away.
+class _JamBanner extends StatelessWidget {
+  const _JamBanner();
+
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-        child: Text(text,
-            style: Theme.of(context)
-                .textTheme
-                .titleMedium
-                ?.copyWith(fontWeight: FontWeight.w700)),
-      );
+  Widget build(BuildContext context) {
+    final jam = context.watch<JamController>();
+    if (!jam.active) return const SizedBox.shrink();
+    final p = Palette.of(context);
+    final people = jam.role == JamRole.host
+        ? jam.guests.length + 1
+        : jam.state.people.length;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+      child: Material(
+        color: p.card,
+        borderRadius: BorderRadius.circular(18),
+        child: ListTile(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          leading: CircleAvatar(
+            backgroundColor: p.ink,
+            child: Icon(AppIcons.jamOn, color: p.onInk, size: 20),
+          ),
+          title: Text(
+            jam.jamName,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          subtitle: Text(
+            '${jam.role == JamRole.host ? 'You\'re hosting' : 'You\'re in'} · ${count(people, 'person', 'people')}',
+          ),
+          trailing: const Icon(AppIcons.chevron, size: 18),
+          onTap: () => openPage(context, const JamScreen()),
+        ),
+      ),
+    );
+  }
 }

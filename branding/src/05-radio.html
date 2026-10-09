@@ -1,0 +1,65 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@1&family=JetBrains+Mono:wght@700&display=block">
+<link rel="stylesheet" href="brand.css"><link rel="stylesheet" href="m.css">
+<style>
+body { background: linear-gradient(170deg, #FFC35C 0%, #FF8A4C 55%, #F0573F 100%); color: var(--ink); }
+.hl { position: absolute; left: 72px; top: 150px; font-weight: 800; font-size: 100px; letter-spacing: -5px; line-height: 1; }
+.hl .serif { font-size: 120px; color: #fff; letter-spacing: -2px; }
+.tag { position: absolute; right: 72px; top: 78px; font-weight: 700; font-size: 20px; letter-spacing: 2.5px; color: #5a2a12; }
+.dial { position: absolute; left: 90px; top: 430px; width: 1100px; height: 560px; }
+.stn { position: absolute; display: flex; align-items: center; gap: 10px; background: #fff; border-radius: 999px; padding: 8px 18px 8px 8px; font-weight: 700; font-size: 18px; box-shadow: 0 12px 26px rgba(120,40,0,.25); white-space: nowrap; }
+.stn .art { width: 40px; height: 40px; border-radius: 50%; }
+.stn .art .wv { display: none; }
+.stn .dot { width: 9px; height: 9px; border-radius: 50%; background: #E5484D; }
+.now { position: absolute; left: 340px; top: 790px; width: 600px; background: var(--ink); color: #fff; border-radius: 30px; padding: 24px; display: flex; gap: 20px; align-items: center; box-shadow: 0 30px 60px rgba(90,20,0,.4); }
+.now .art { width: 104px; height: 104px; border-radius: 20px; }
+.eq { display: flex; gap: 4px; align-items: flex-end; height: 26px; margin-left: auto; }
+.eq i { width: 6px; border-radius: 3px; background: var(--coral); }
+.genres { position: absolute; left: 72px; right: 72px; bottom: 72px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+.genres span { background: rgba(255,255,255,.88); padding: 13px 22px; border-radius: 999px; font-weight: 700; font-size: 20px; }
+.genres span.on { background: var(--ink); color: #fff; }
+</style></head><body>
+<div class="brand" style="left:72px;top:66px"><div class="logo"></div>Musicly</div>
+<div class="tag">04 · LIVE RADIO</div>
+<div class="hl">Radio from<br><span class="serif">every corner.</span></div>
+
+<svg class="dial" viewBox="0 0 1100 560">
+  <defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#1C1D22" stop-opacity=".25"/><stop offset="1" stop-color="#1C1D22" stop-opacity=".25"/></linearGradient></defs>
+  <path d="M90 540 A460 460 0 0 1 1010 540" fill="none" stroke="#1C1D22" stroke-opacity=".22" stroke-width="3"/>
+  <g id="ticks"></g>
+  <line x1="550" y1="540" x2="760" y2="140" stroke="#1C1D22" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="550" cy="540" r="26" fill="#1C1D22"/><circle cx="550" cy="540" r="9" fill="#FF6B4A"/>
+</svg>
+
+<div class="stn" style="left:110px;top:790px"><div class="art a3"></div>Lagos Afrobeats<span class="dot"></span></div>
+<div class="stn" style="left:150px;top:620px"><div class="art a2"></div>Nairobi Gospel<span class="dot"></span></div>
+<div class="stn" style="left:300px;top:490px"><div class="art a4"></div>Lo-fi Café · Berlin<span class="dot"></span></div>
+<div class="stn" style="left:540px;top:430px"><div class="art a5"></div>Tokyo City Pop<span class="dot"></span></div>
+<div class="stn" style="left:860px;top:520px;transform:scale(1.12);background:var(--ink);color:#fff"><div class="art a1"></div>Addis Jazz FM<span class="dot"></span></div>
+<div class="stn" style="left:930px;top:680px"><div class="art a6"></div>Classic Rock 101<span class="dot"></span></div>
+
+<div class="now">
+  <div class="art a1"></div>
+  <div><div style="display:flex;gap:10px;align-items:center"><span class="live">LIVE</span><span style="color:#9a9eae;font-size:16px">Addis Ababa · 98.1</span></div>
+    <div style="font-weight:800;font-size:30px;letter-spacing:-.8px;margin-top:8px">Addis Jazz FM</div>
+    <div style="color:#c9cbd3;font-size:17px;margin-top:4px">On air: Selam Band – Addis Nights</div></div>
+  <div class="eq"><i style="height:40%"></i><i style="height:90%"></i><i style="height:60%"></i><i style="height:100%"></i><i style="height:45%"></i></div>
+</div>
+
+<div class="genres"><span class="on">Near you</span><span>Jazz</span><span>Afrobeats</span><span>Lo-fi</span><span>Gospel</span><span>News</span><span>Classical</span><span>Hip-hop</span></div>
+<script src="brand.js"></script>
+<script>
+let t = '';
+for (let k = 0; k <= 60; k++) {
+  const a = Math.PI - (k / 60) * Math.PI, big = k % 5 === 0;
+  const r1 = 460, r2 = big ? 424 : 442;
+  const x1 = 550 + r1 * Math.cos(a), y1 = 540 - r1 * Math.sin(a), x2 = 550 + r2 * Math.cos(a), y2 = 540 - r2 * Math.sin(a);
+  t += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#1C1D22" stroke-opacity="${big ? .6 : .3}" stroke-width="${big ? 4 : 2.5}" stroke-linecap="round"/>`;
+  if (big && k % 10 === 0) {
+    const xr = 550 + 395 * Math.cos(a), yr = 540 - 395 * Math.sin(a);
+    t += `<text x="${xr}" y="${yr + 7}" text-anchor="middle" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#1C1D22" fill-opacity=".55">${88 + k / 3 | 0}</text>`;
+  }
+}
+document.getElementById('ticks').innerHTML = t;
+</script>
+</body></html>

@@ -1,0 +1,34 @@
+name: Publish release
+
+# Publishes the APKs in dist/ as a GitHub release whenever they change.
+# The version comes from pubspec.yaml (e.g. 1.0.0 -> tag v1.0.0).
+on:
+  push:
+    paths:
+      - "dist/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: |
+          v=$(grep -m1 '^version:' pubspec.yaml | sed -E 's/version: *([^+]+).*/\1/')
+          echo "tag=v$v" >> "$GITHUB_OUTPUT"
+          echo "name=Musicly $v" >> "$GITHUB_OUTPUT"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.name }}
+          target_commitish: ${{ github.sha }}
+          body_path: dist/RELEASE_NOTES.md
+          files: dist/*.apk
+          make_latest: true

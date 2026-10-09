@@ -46,3 +46,12 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+musicly-web-release.zip
+*.apk
+release/
+android/build/
+!dist/*.apk
+
+# promo video: large generated files
+video/voices/
+video/audio/
