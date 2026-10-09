@@ -6,6 +6,7 @@ import '../services/home_widgets.dart';
 import '../state/library_controller.dart';
 import 'icons.dart';
 import 'nav.dart';
+import 'player_style_sheet.dart';
 import 'radio_screen.dart';
 import 'telegram_screen.dart';
 import 'routes.dart';
@@ -424,6 +425,14 @@ class LibraryScreen extends StatelessWidget {
               count(lib.recent.length, 'song'),
               () =>
                   openLive(context, 'Recently played', 'You', (l) => l.recent),
+            ),
+            tile(
+              square(AppIcons.disc),
+              'Player style',
+              lib.playerStyle == PlayerStyle.minimal
+                  ? 'Minimal · a turning disc and click-wheel'
+                  : 'Classic · cover art and waveform',
+              () => showPlayerStyle(context),
             ),
             tile(
               square(AppIcons.backup),

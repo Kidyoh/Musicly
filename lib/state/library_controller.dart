@@ -15,6 +15,9 @@ import '../services/telegram_bot.dart';
 import '../services/device_library.dart';
 import '../services/radio_api.dart';
 
+/// How the player looks: the colourful default, or a quiet, minimal one.
+enum PlayerStyle { classic, minimal }
+
 /// Everything the user owns or that's personalised: likes, playlists,
 /// the Telegram channel, phone music, history, downloads and the home feed.
 /// Every song here plays in full; there are no previews.
@@ -30,6 +33,7 @@ class LibraryController extends ChangeNotifier {
   final RadioApi radio = RadioApi();
 
   ThemeMode themeMode = ThemeMode.light;
+  PlayerStyle playerStyle = PlayerStyle.classic;
 
   final List<Track> favorites = [];
   final List<Track> recent = [];
@@ -935,6 +939,13 @@ class LibraryController extends ChangeNotifier {
     return ('Unknown artist', base);
   }
 
+  void setPlayerStyle(PlayerStyle style) {
+    if (style == playerStyle) return;
+    playerStyle = style;
+    _save();
+    notifyListeners();
+  }
+
   void toggleTheme() {
     themeMode = themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
     _save();
@@ -988,6 +999,7 @@ class LibraryController extends ChangeNotifier {
         );
       }
       await p.setString('theme', themeMode.name);
+      await p.setString('playerStyle', playerStyle.name);
     } catch (_) {}
     _scheduleBackup();
   }
@@ -1056,6 +1068,9 @@ class LibraryController extends ChangeNotifier {
       themeMode = p.getString('theme') == 'dark'
           ? ThemeMode.dark
           : ThemeMode.light;
+      playerStyle =
+          PlayerStyle.values.asNameMap()[p.getString('playerStyle')] ??
+          PlayerStyle.classic;
       notifyListeners();
     } catch (_) {}
   }

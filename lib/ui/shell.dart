@@ -9,6 +9,7 @@ import 'icons.dart';
 import 'nav.dart';
 import 'hotlist_screen.dart';
 import 'library_screen.dart';
+import 'minimal_player.dart';
 import 'now_playing.dart';
 import 'search_screen.dart';
 import 'theme.dart';
@@ -172,6 +173,9 @@ class _MiniPlayer extends StatelessWidget {
     final lib = context.watch<LibraryController>();
     final p = Palette.of(context);
     final t = c.current;
+    if (lib.playerStyle == PlayerStyle.minimal) {
+      return MinimalMiniPlayer(onOpen: () => openNowPlaying(context));
+    }
     return AnimatedSize(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOutCubic,

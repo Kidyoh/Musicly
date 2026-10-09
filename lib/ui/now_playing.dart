@@ -9,6 +9,7 @@ import '../state/player_controller.dart';
 import 'art_color.dart';
 import 'icons.dart';
 import 'lyrics_view.dart';
+import 'minimal_player.dart';
 import 'routes.dart';
 import 'sheets.dart';
 import 'theme.dart';
@@ -54,6 +55,9 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         if (mounted) Navigator.maybePop(context);
       });
       return const Scaffold();
+    }
+    if (lib.playerStyle == PlayerStyle.minimal) {
+      return MinimalNowPlaying(startOnLyrics: widget.startOnLyrics);
     }
     final liked = lib.isFavorite(t);
 
