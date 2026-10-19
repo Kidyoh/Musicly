@@ -48,7 +48,14 @@ Future<void> main() async {
       providers: [
         ChangeNotifierProvider.value(value: library),
         ChangeNotifierProvider.value(value: player),
-        ChangeNotifierProvider(create: (_) => LyricsController(player)),
+        ChangeNotifierProvider(
+          create: (_) => LyricsController(
+            player,
+            online: () => library.onlineLyrics,
+            settings: library,
+            ready: library.ready,
+          ),
+        ),
         ChangeNotifierProvider(create: (_) => JamController(library, player)),
       ],
       child: const MusiclyApp(),

@@ -225,6 +225,44 @@ class LibraryScreen extends StatelessWidget {
     );
   }
 
+  void _lyricsSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      useRootNavigator: true,
+      builder: (ctx) => SafeArea(
+        child: Consumer<LibraryController>(
+          builder: (ctx, lib, _) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(24, 0, 24, 8),
+                child: Text(
+                  'Lyrics',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                ),
+              ),
+              SwitchListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+                secondary: const Icon(AppIcons.lyrics),
+                title: const Text(
+                  'Find lyrics online',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text(
+                  'Sends the song\'s title and artist to LRCLIB.',
+                ),
+                value: lib.onlineLyrics,
+                onChanged: lib.setOnlineLyrics,
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _scan(BuildContext context) async {
     final lib = context.read<LibraryController>();
     final ok = await lib.scanDevice();
@@ -433,6 +471,14 @@ class LibraryScreen extends StatelessWidget {
                   ? 'Minimal · a turning disc and click-wheel'
                   : 'Classic · cover art and waveform',
               () => showPlayerStyle(context),
+            ),
+            tile(
+              square(AppIcons.lyrics),
+              'Lyrics',
+              lib.onlineLyrics
+                  ? 'Found online for each song'
+                  : 'Online lookup off',
+              () => _lyricsSheet(context),
             ),
             tile(
               square(AppIcons.backup),
