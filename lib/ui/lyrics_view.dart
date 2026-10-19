@@ -84,7 +84,7 @@ class _LyricsViewState extends State<LyricsView> {
           icon: AppIcons.offline,
           text: 'Could not load lyrics.',
           action: OutlinedButton(
-            onPressed: l.retry,
+            onPressed: l.lookUp,
             child: const Text('Try again'),
           ),
         );
@@ -96,6 +96,19 @@ class _LyricsViewState extends State<LyricsView> {
             onPressed: () => showLyricsSearch(context),
             icon: const Icon(AppIcons.search, size: 18),
             label: const Text('Search lyrics'),
+          ),
+        );
+      case LyricsStatus.off:
+        return EmptyState(
+          icon: AppIcons.lyrics,
+          text:
+              'Lyrics lookup is off.\n'
+              'Turn on "Find lyrics online" in Library › Lyrics, '
+              'or search once for this song.',
+          action: FilledButton.icon(
+            onPressed: l.lookUp,
+            icon: const Icon(AppIcons.search, size: 18),
+            label: const Text('Search for this song'),
           ),
         );
       case LyricsStatus.found:

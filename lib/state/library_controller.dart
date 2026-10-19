@@ -23,7 +23,8 @@ enum PlayerStyle { classic, minimal }
 /// Every song here plays in full; there are no previews.
 class LibraryController extends ChangeNotifier {
   LibraryController() {
-    _restore().then((_) {
+    ready = _restore();
+    ready.then((_) {
       loadHome();
       if (channelConnected) _startSync();
       if (deviceScanEnabled) scanDevice(askPermission: false);
@@ -31,6 +32,9 @@ class LibraryController extends ChangeNotifier {
   }
 
   final RadioApi radio = RadioApi();
+
+  /// Completes once saved settings and the library have been loaded.
+  late final Future<void> ready;
 
   ThemeMode themeMode = ThemeMode.light;
   PlayerStyle playerStyle = PlayerStyle.classic;
@@ -126,6 +130,10 @@ class LibraryController extends ChangeNotifier {
   bool deviceScanEnabled = false;
   bool scanning = false;
   String? scanError;
+
+  /// Look up lyrics on LRCLIB automatically for each song that plays. When
+  /// off, lyrics are only fetched when the user asks for them.
+  bool onlineLyrics = true;
 
   // Home feed
   List<Track> forYou = [];
@@ -946,6 +954,13 @@ class LibraryController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setOnlineLyrics(bool on) {
+    if (on == onlineLyrics) return;
+    onlineLyrics = on;
+    _save();
+    notifyListeners();
+  }
+
   void toggleTheme() {
     themeMode = themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
     _save();
@@ -979,6 +994,7 @@ class LibraryController extends ChangeNotifier {
       );
       await p.setBool('autoDownload', autoDownload);
       await p.setBool('deviceScan', deviceScanEnabled);
+      await p.setBool('onlineLyrics', onlineLyrics);
       if (bot == null) {
         await p.remove('telegram');
       } else {
@@ -1039,6 +1055,7 @@ class LibraryController extends ChangeNotifier {
       });
       autoDownload = p.getBool('autoDownload') ?? true;
       deviceScanEnabled = p.getBool('deviceScan') ?? false;
+      onlineLyrics = p.getBool('onlineLyrics') ?? true;
       final tg = p.getString('telegram');
       if (tg != null) {
         final j = jsonDecode(tg) as Map<String, dynamic>;
