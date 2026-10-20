@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../models/collection.dart';
 import '../models/track.dart';
+import '../services/youtube_api.dart';
 import '../state/library_controller.dart';
 import '../state/player_controller.dart';
 import 'icons.dart';
@@ -28,6 +29,7 @@ class CollectionScreen extends StatefulWidget {
     this.actions = const [],
     this.onRefresh,
     this.banner,
+    this.youtubePlaylist,
   }) : playlistId = null;
 
   /// A playlist the user made: editable, reorderable.
@@ -43,7 +45,8 @@ class CollectionScreen extends StatefulWidget {
       removableFiles = false,
       actions = const [],
       onRefresh = null,
-      banner = null;
+      banner = null,
+      youtubePlaylist = null;
 
   final String title;
   final String owner;
@@ -64,6 +67,9 @@ class CollectionScreen extends StatefulWidget {
 
   /// Shown between the Play/Shuffle buttons and the songs.
   final Widget? banner;
+
+  /// A playlist from YouTube, which can be saved to the library.
+  final YouTubePlaylist? youtubePlaylist;
 
   @override
   State<CollectionScreen> createState() => _CollectionScreenState();
@@ -424,6 +430,25 @@ class _CollectionScreenState extends State<CollectionScreen> {
               _q = '';
             }),
           ),
+          if (widget.youtubePlaylist case final yp?)
+            Builder(
+              builder: (context) {
+                final lib = context.watch<LibraryController>();
+                final saved = lib.isPlaylistSaved(yp.id);
+                return IconButton(
+                  tooltip: saved ? 'Remove from library' : 'Save to library',
+                  icon: Icon(saved ? AppIcons.heartOn : AppIcons.heart),
+                  color: saved ? const Color(0xFFE5484D) : null,
+                  onPressed: () {
+                    lib.toggleSavePlaylist(yp);
+                    toast(
+                      context,
+                      saved ? 'Removed from library' : 'Saved to library',
+                    );
+                  },
+                );
+              },
+            ),
           ...widget.actions,
         ],
       ),

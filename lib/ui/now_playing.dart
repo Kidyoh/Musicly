@@ -262,8 +262,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                                       child: GestureDetector(
                                         onTap: t.isRadio
                                             ? null
-                                            : () =>
-                                                  openArtist(context, t.artist),
+                                            : () => openArtistOf(context, t),
                                         child: Text(
                                           t.isRadio
                                               ? (c.nowOnAir ?? t.artist)

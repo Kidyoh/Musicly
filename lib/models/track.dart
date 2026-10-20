@@ -1,7 +1,8 @@
 import 'dart:typed_data';
 
-/// radio: live stations · telegram: your channel · device/file: music on the phone.
-enum TrackSource { radio, telegram, device, file }
+/// radio: live stations · telegram: your channel · device/file: music on the
+/// phone · youtube: songs streamed from YouTube.
+enum TrackSource { radio, telegram, device, file, youtube }
 
 class Track {
   Track({
@@ -21,14 +22,15 @@ class Track {
     this.mime,
   });
 
-  /// `rb:` radio, `tg:` Telegram, `ms:` phone library, `file:` picked files.
+  /// `rb:` radio, `tg:` Telegram, `ms:` phone library, `file:` picked files,
+  /// `yt:` YouTube.
   final String id;
   final String title;
   final String artist;
   final TrackSource source;
 
   /// File path or content:// URI for phone songs, the stream link for radio,
-  /// and the Telegram file id for channel songs.
+  /// the Telegram file id for channel songs and the video id for YouTube.
   final String? uri;
 
   /// In-memory audio for files picked on web, where no path exists.
@@ -42,7 +44,7 @@ class Track {
   /// MediaStore id, used to load embedded album art on Android.
   final int? mediaId;
 
-  /// Web page (radio station homepage).
+  /// Web page (radio station homepage, YouTube watch page).
   final String? link;
 
   /// File type, e.g. audio/mpeg (Telegram songs; used when saving them).
@@ -51,6 +53,7 @@ class Track {
   bool get isLocal =>
       source == TrackSource.device || source == TrackSource.file;
   bool get isRadio => source == TrackSource.radio;
+  bool get isYouTube => source == TrackSource.youtube;
 
   /// Bytes-only tracks cannot be restored after a restart.
   /// Songs that only exist during a Jam (sent by a friend, or shown from

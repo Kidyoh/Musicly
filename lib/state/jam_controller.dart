@@ -14,6 +14,7 @@ import '../services/jam_host.dart';
 import '../services/jam_online.dart';
 import '../services/jam_protocol.dart';
 import '../services/jam_session.dart';
+import '../services/youtube_api.dart';
 import '../services/telegram_bot.dart';
 import 'library_controller.dart';
 import 'player_controller.dart';
@@ -830,6 +831,13 @@ class JamController extends ChangeNotifier {
     if (t.source == TrackSource.telegram && library.bot != null) {
       final ext = extOf(t.mime, 'mp3');
       return (await fetch(await library.bot!.fileUrl(t.uri!), ext), ext);
+    }
+    if (t.isYouTube) {
+      final file = File(
+        '${dir.path}/jam-out-${DateTime.now().microsecondsSinceEpoch}.audio',
+      );
+      final ext = await YouTubeApi.instance.download(t, file);
+      return (await file.rename(file.path.replaceFirst('.audio', '.$ext')), ext);
     }
     throw const JamError('That song can\'t be shared.');
   }

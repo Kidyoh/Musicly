@@ -152,6 +152,11 @@ abstract final class AppIcons {
     0xe802,
     fontFamily: 'PhosphorRegular',
   );
+  static const IconData youtube = IconData(
+    0xe4fc,
+    fontFamily: 'PhosphorRegular',
+  );
+  static const IconData youtubeOn = IconData(0xe4fc, fontFamily: 'PhosphorFill');
   static const IconData telegram = IconData(
     0xe5bc,
     fontFamily: 'PhosphorRegular',

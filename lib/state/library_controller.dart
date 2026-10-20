@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show ThemeMode;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,12 +16,16 @@ import '../services/telegram_backup.dart';
 import '../services/telegram_bot.dart';
 import '../services/device_library.dart';
 import '../services/radio_api.dart';
+import '../services/youtube_api.dart';
+
+const _ch = MethodChannel('musicly/media');
 
 /// How the player looks: the colourful default, or a quiet, minimal one.
 enum PlayerStyle { classic, minimal }
 
 /// Everything the user owns or that's personalised: likes, playlists,
-/// the Telegram channel, phone music, history, downloads and the home feed.
+/// the Telegram channel, phone music, YouTube, history, downloads and the
+/// home feed.
 /// Every song here plays in full; there are no previews.
 class LibraryController extends ChangeNotifier {
   LibraryController() {
@@ -40,6 +46,20 @@ class LibraryController extends ChangeNotifier {
   final List<Track> files = []; // picked with the file picker
   List<Track> deviceTracks = []; // scanned from the phone
   final List<UserPlaylist> playlists = [];
+
+  // YouTube
+  final List<YouTubeArtist> followed = [];
+  final List<YouTubePlaylist> savedYtPlaylists = [];
+  final List<String> ytSearches = []; // newest first
+  final List<Track> _ytHistory = []; // YouTube songs played, newest first
+
+  /// Search looks on YouTube instead of in your own music.
+  bool searchYouTube = false;
+
+  // YouTube home feed
+  List<Track> ytQuickPicks = [];
+  List<Track> ytNewReleases = [];
+  bool ytLoading = false;
 
   /// Plays per song id and per artist name (lower-case), for "Your mix".
   final Map<String, int> _trackPlays = {};
@@ -145,8 +165,27 @@ class LibraryController extends ChangeNotifier {
     return [...deviceTracks.where((t) => !copies.contains(t.id)), ...files];
   }
 
-  /// Every full song the user has: channel first, then phone.
-  List<Track> get allSongs => [...channelTracks, ...localTracks];
+  /// YouTube songs that are part of your library: liked, in a playlist, or
+  /// played. They count toward your artists, mix and hotlist.
+  List<Track> get youtubeSongs {
+    final seen = <String>{};
+    return [
+      for (final t in favorites)
+        if (t.isYouTube && seen.add(t.id)) t,
+      for (final p in playlists)
+        for (final t in p.tracks)
+          if (t.isYouTube && seen.add(t.id)) t,
+      for (final t in _ytHistory)
+        if (seen.add(t.id)) t,
+    ];
+  }
+
+  /// Every full song the user has: channel first, then phone, then YouTube.
+  List<Track> get allSongs => [
+    ...channelTracks,
+    ...localTracks,
+    ...youtubeSongs,
+  ];
 
   /// The phone copy of a channel song, when it has been downloaded.
   Track? downloadedCopy(Track t) => _downloads[t.id];
@@ -159,6 +198,11 @@ class LibraryController extends ChangeNotifier {
     recent.removeWhere((r) => r.id == t.id);
     recent.insert(0, t);
     if (recent.length > 50) recent.removeLast();
+    if (t.isYouTube) {
+      _ytHistory.removeWhere((r) => r.id == t.id);
+      _ytHistory.insert(0, t);
+      if (_ytHistory.length > 300) _ytHistory.removeLast();
+    }
     if (t.isRadio) {
       radio.countClick(t.id);
     } else {
@@ -268,6 +312,7 @@ class LibraryController extends ChangeNotifier {
       if (channelTracks.isNotEmpty)
         channels.length > 1 ? 'your channels' : 'your channel',
       if (localTracks.isNotEmpty) 'your phone',
+      if (youtubeSongs.isNotEmpty) 'YouTube',
     ].join(' & ');
     forYouReason = names.isEmpty
         ? 'A mix from $sources'
@@ -290,6 +335,124 @@ class LibraryController extends ChangeNotifier {
       ...local,
       ...top,
     ].where((t) => seen.add(t.id)).take(20).toList();
+    notifyListeners();
+    await loadYouTubeHome();
+  }
+
+  // ---- YouTube ------------------------------------------------------------------
+
+  /// Quick picks (songs like the ones you play and like) and new songs from
+  /// the artists you follow.
+  Future<void> loadYouTubeHome() async {
+    if (!YouTubeApi.supported || ytLoading) return;
+    final api = YouTubeApi.instance;
+    ytLoading = true;
+    notifyListeners();
+    try {
+      final seeds = <Track>[];
+      for (final t in [...recent.where((t) => t.isYouTube), ...likedSongs]) {
+        if (!seeds.any((s) => s.id == t.id)) seeds.add(t);
+        if (seeds.length == 3) break;
+      }
+      // No YouTube listening yet: start from your own artists, or the charts.
+      if (seeds.isEmpty) {
+        final names = topArtists(2);
+        final found = await Future.wait([
+          for (final n in names.isEmpty ? ['top hits this week'] : names)
+            api.songs(n, limit: 6).catchError((_) => <Track>[]),
+        ]);
+        seeds.addAll(found.expand((l) => l.take(names.isEmpty ? 6 : 1)));
+      }
+      final lists = await Future.wait([
+        for (final s in seeds.take(3))
+          api.related(s).catchError((_) => <Track>[]),
+      ]);
+      final heard = {for (final t in recent.take(20)) t.id};
+      final seen = <String>{};
+      final picks = <Track>[];
+      // Take turns from each seed's list so no one song dominates.
+      for (var i = 0; picks.length < 24; i++) {
+        var any = false;
+        for (final l in lists) {
+          if (i >= l.length) continue;
+          any = true;
+          final t = l[i];
+          if (!heard.contains(t.id) && seen.add(t.id)) picks.add(t);
+        }
+        if (!any) break;
+      }
+      if (picks.isEmpty) picks.addAll(seeds.where((t) => seen.add(t.id)));
+      ytQuickPicks = picks;
+
+      final fresh = await Future.wait([
+        for (final a in followed.take(5))
+          api
+              .artistSongs(a, latest: true)
+              .then((l) => l.take(3).toList())
+              .catchError((_) => <Track>[]),
+      ]);
+      ytNewReleases = [
+        for (var i = 0; i < 3; i++)
+          for (final l in fresh)
+            if (i < l.length) l[i],
+      ];
+    } catch (_) {
+    } finally {
+      ytLoading = false;
+      notifyListeners();
+    }
+  }
+
+  bool isFollowing(String channelId) => followed.any((a) => a.id == channelId);
+
+  void toggleFollow(YouTubeArtist a) {
+    if (isFollowing(a.id)) {
+      followed.removeWhere((x) => x.id == a.id);
+    } else {
+      followed.insert(0, a);
+    }
+    _save();
+    notifyListeners();
+  }
+
+  bool isPlaylistSaved(String id) => savedYtPlaylists.any((p) => p.id == id);
+
+  void toggleSavePlaylist(YouTubePlaylist p) {
+    if (isPlaylistSaved(p.id)) {
+      savedYtPlaylists.removeWhere((x) => x.id == p.id);
+    } else {
+      savedYtPlaylists.insert(0, p);
+    }
+    _save();
+    notifyListeners();
+  }
+
+  void addYtSearch(String q) {
+    q = q.trim();
+    if (q.isEmpty) return;
+    ytSearches.removeWhere((x) => x.toLowerCase() == q.toLowerCase());
+    ytSearches.insert(0, q);
+    if (ytSearches.length > 15) ytSearches.removeLast();
+    _save();
+    notifyListeners();
+  }
+
+  void removeYtSearch(String q) {
+    ytSearches.remove(q);
+    _save();
+    notifyListeners();
+  }
+
+  void clearYtSearches() {
+    ytSearches.clear();
+    _save();
+    notifyListeners();
+  }
+
+  void setSearchYouTube(bool on) {
+    if (on == searchYouTube) return;
+    searchYouTube = on;
+    _save();
     notifyListeners();
   }
 
@@ -697,6 +860,10 @@ class LibraryController extends ChangeNotifier {
     _trackPlays.clear();
     _artistPlays.clear();
     _downloads.clear();
+    followed.clear();
+    savedYtPlaylists.clear();
+    ytSearches.clear();
+    _ytHistory.clear();
     await _restore();
     bot ??= keepBot;
     _userChatId ??= keepChat;
@@ -762,6 +929,37 @@ class LibraryController extends ChangeNotifier {
             .replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1f]'), '')
             .trim();
     return '${base.isEmpty ? t.id.substring(3) : base.substring(0, min(base.length, 120))}.$ext';
+  }
+
+  /// Saves a YouTube song into Music/Musicly for offline playback.
+  Future<void> downloadYouTubeTrack(Track t) async {
+    if (!DeviceLibrary.supported) return;
+    if (!await DeviceLibrary.requestPermission()) {
+      downloadError = 'Allow access to music to save songs on this phone.';
+      notifyListeners();
+      return;
+    }
+    try {
+      final name = _fileName(t);
+      final dir = await _ch.invokeMethod<String>('getMusicDir');
+      if (dir == null) return;
+      final file = File('$dir/$name');
+      final ext = await YouTubeApi.instance.download(t, file);
+      final copy = await DeviceLibrary.saveAudio(
+        url: file.path,
+        fileName: name,
+        like: t,
+        mime: ext == 'm4a' ? 'audio/mp4' : 'audio/webm',
+      );
+      if (copy != null) {
+        _downloads[t.id] = copy;
+        await _saveDownloads();
+        notifyListeners();
+      }
+    } catch (e) {
+      downloadError = 'Could not download: $e';
+      notifyListeners();
+    }
   }
 
   void setAutoDownload(bool on) {
@@ -998,6 +1196,17 @@ class LibraryController extends ChangeNotifier {
           }),
         );
       }
+      await p.setString(
+        'yt_followed',
+        jsonEncode(followed.map((a) => a.toJson()).toList()),
+      );
+      await p.setString(
+        'yt_playlists',
+        jsonEncode(savedYtPlaylists.map((x) => x.toJson()).toList()),
+      );
+      await p.setStringList('yt_searches', ytSearches);
+      await p.setString('yt_history', enc(_ytHistory));
+      await p.setBool('searchYouTube', searchYouTube);
       await p.setString('theme', themeMode.name);
       await p.setString('playerStyle', playerStyle.name);
     } catch (_) {}
@@ -1065,6 +1274,18 @@ class LibraryController extends ChangeNotifier {
           });
         _channelsChanged();
       }
+      followed.addAll([
+        for (final e in jsonDecode(p.getString('yt_followed') ?? '[]') as List)
+          YouTubeArtist.fromJson(e as Map<String, dynamic>),
+      ]);
+      savedYtPlaylists.addAll([
+        for (final e in jsonDecode(p.getString('yt_playlists') ?? '[]') as List)
+          YouTubePlaylist.fromJson(e as Map<String, dynamic>),
+      ]);
+      ytSearches.addAll(p.getStringList('yt_searches') ?? const []);
+      _ytHistory.addAll(dec('yt_history'));
+      searchYouTube =
+          YouTubeApi.supported && (p.getBool('searchYouTube') ?? false);
       themeMode = p.getString('theme') == 'dark'
           ? ThemeMode.dark
           : ThemeMode.light;

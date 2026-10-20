@@ -471,6 +471,34 @@ class LibraryScreen extends StatelessWidget {
                   () => openUserPlaylist(context, pl),
                 ),
 
+            // Bookmarked YouTube playlists and followed artists
+            if (lib.savedYtPlaylists.isNotEmpty) ...[
+              const SectionHeader('Saved from YouTube'),
+              for (final pl in lib.savedYtPlaylists)
+                tile(
+                  Artwork(pl.cover, size: 56, radius: 14),
+                  pl.title,
+                  pl.count == null
+                      ? 'YouTube playlist'
+                      : '${count(pl.count!, 'song')} • YouTube playlist',
+                  () => openYouTubePlaylist(context, pl),
+                ),
+            ],
+            if (lib.followed.isNotEmpty) ...[
+              const SectionHeader('Artists you follow'),
+              HRow(
+                height: 132,
+                children: [
+                  for (final a in lib.followed)
+                    ArtistBubble(
+                      name: a.name,
+                      cover: a.cover,
+                      onTap: () => openYouTubeArtist(context, a),
+                    ),
+                ],
+              ),
+            ],
+
             // Artists from your own music
             if (lib.artists.isNotEmpty) ...[
               const SectionHeader('Your artists'),

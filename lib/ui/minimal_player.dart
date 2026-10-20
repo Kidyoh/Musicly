@@ -166,7 +166,7 @@ class _MinimalNowPlayingState extends State<MinimalNowPlaying>
                   GestureDetector(
                     onTap: t.isRadio
                         ? null
-                        : () => openArtist(context, t.artist),
+                        : () => openArtistOf(context, t),
                     child: Text(
                       t.isRadio ? (c.nowOnAir ?? t.artist) : t.artist,
                       maxLines: 1,

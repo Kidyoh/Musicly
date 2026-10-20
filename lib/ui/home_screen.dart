@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/track.dart';
+import '../services/youtube_api.dart';
 import '../state/jam_controller.dart';
 import '../state/library_controller.dart';
 import '../state/player_controller.dart';
@@ -104,7 +105,7 @@ class HomeScreen extends StatelessWidget {
               const SizedBox(height: 18),
               const _JamBanner(),
               _ForYouCard(lib: lib),
-              if (songs.isEmpty) const _GetStarted(),
+              if (songs.isEmpty) _GetStarted(onOpenTab: onOpenTab),
               if (lib.recent.isNotEmpty) ...[
                 const SectionHeader('Jump back in'),
                 HRow(
@@ -121,6 +122,21 @@ class HomeScreen extends StatelessWidget {
                       ),
                   ],
                 ),
+              ],
+              if (lib.ytQuickPicks.isNotEmpty) ...[
+                SectionHeader(
+                  'Quick picks',
+                  subtitle: 'From YouTube, based on what you play',
+                  action: 'See all',
+                  onAction: () => openLive(
+                    context,
+                    'Quick picks',
+                    'From YouTube, based on what you play',
+                    (l) => l.ytQuickPicks,
+                    kind: 'Made for you',
+                  ),
+                ),
+                songRows(lib.ytQuickPicks, max: 6),
               ],
               for (final ch in lib.channels)
                 if (ch.tracks.isNotEmpty) ...[
@@ -147,6 +163,42 @@ class HomeScreen extends StatelessWidget {
                       StationCard(
                         station: lib.stations[i],
                         onTap: () => c.playQueue(lib.stations, i),
+                      ),
+                  ],
+                ),
+              ],
+              if (lib.ytNewReleases.isNotEmpty) ...[
+                const SectionHeader(
+                  'New from artists you follow',
+                  subtitle: 'Latest on YouTube',
+                ),
+                HRow(
+                  height: 196,
+                  children: [
+                    for (var i = 0; i < lib.ytNewReleases.length; i++)
+                      CoverCard(
+                        title: lib.ytNewReleases[i].title,
+                        subtitle: lib.ytNewReleases[i].artist,
+                        art: Artwork(
+                          lib.ytNewReleases[i],
+                          size: 148,
+                          radius: 16,
+                        ),
+                        onTap: () => c.playQueue(lib.ytNewReleases, i),
+                      ),
+                  ],
+                ),
+              ],
+              if (lib.followed.isNotEmpty) ...[
+                const SectionHeader('Artists you follow'),
+                HRow(
+                  height: 132,
+                  children: [
+                    for (final a in lib.followed)
+                      ArtistBubble(
+                        name: a.name,
+                        cover: a.cover,
+                        onTap: () => openYouTubeArtist(context, a),
                       ),
                   ],
                 ),
@@ -200,9 +252,11 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-/// Shown until there's music: connect Telegram or add phone songs.
+/// Shown until there's music: connect Telegram, add phone songs or search
+/// YouTube.
 class _GetStarted extends StatelessWidget {
-  const _GetStarted();
+  const _GetStarted({required this.onOpenTab});
+  final ValueChanged<int> onOpenTab;
 
   @override
   Widget build(BuildContext context) {
@@ -224,15 +278,41 @@ class _GetStarted extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              'Connect your Telegram channel or add the songs on this phone. '
-              'Your mix, artists and hotlist are built from them.',
+              YouTubeApi.supported
+                  ? 'Connect your Telegram channel, add the songs on this phone, '
+                        'or play anything from YouTube. Your mix, artists and '
+                        'hotlist are built from what you play.'
+                  : 'Connect your Telegram channel or add the songs on this phone. '
+                        'Your mix, artists and hotlist are built from them.',
               style: TextStyle(color: p.sub, height: 1.5),
             ),
             const SizedBox(height: 14),
-            PillButton(
-              icon: AppIcons.telegram,
-              label: 'Connect Telegram',
-              onPressed: () => openPage(context, const TelegramScreen()),
+            Row(
+              children: [
+                Expanded(
+                  child: PillButton(
+                    icon: AppIcons.telegram,
+                    label: 'Telegram',
+                    onPressed: () => openPage(context, const TelegramScreen()),
+                  ),
+                ),
+                if (YouTubeApi.supported) ...[
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: PillButton(
+                      icon: AppIcons.youtube,
+                      label: 'YouTube',
+                      filled: false,
+                      onPressed: () {
+                        context.read<LibraryController>().setSearchYouTube(
+                          true,
+                        );
+                        onOpenTab(1);
+                      },
+                    ),
+                  ),
+                ],
+              ],
             ),
           ],
         ),

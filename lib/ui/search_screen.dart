@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../models/track.dart';
 import '../services/radio_api.dart';
+import '../services/youtube_api.dart';
 import '../state/library_controller.dart';
 import '../state/player_controller.dart';
 import 'icons.dart';
@@ -13,8 +14,10 @@ import 'radio_screen.dart';
 import 'routes.dart';
 import 'theme.dart';
 import 'widgets.dart';
+import 'youtube_search.dart';
 
-/// Searches your own music (channel + phone), artists, playlists and radio.
+/// Searches your own music (channel + phone), artists, playlists and radio,
+/// or, in YouTube mode, songs, artists and playlists on YouTube.
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
   @override
@@ -37,6 +40,7 @@ class _SearchScreenState extends State<SearchScreen> {
   void _onChanged(String v) {
     setState(() => _q = v);
     _debounce?.cancel();
+    if (context.read<LibraryController>().searchYouTube) return;
     _debounce = Timer(const Duration(milliseconds: 450), () async {
       final q = v.trim();
       if (q.isEmpty) return;
@@ -47,6 +51,22 @@ class _SearchScreenState extends State<SearchScreen> {
           .catchError((_) => <Track>[]);
       if (mounted && q == _q.trim()) setState(() => _stations = found);
     });
+  }
+
+  /// Fills in [q] and searches it (suggestions, recent searches, genres).
+  void _searchFor(String q) {
+    _ctl.value = TextEditingValue(
+      text: q,
+      selection: TextSelection.collapsed(offset: q.length),
+    );
+    FocusScope.of(context).unfocus();
+    context.read<LibraryController>().addYtSearch(q);
+    _onChanged(q);
+  }
+
+  void _setMode(LibraryController lib, bool youtube) {
+    lib.setSearchYouTube(youtube);
+    _onChanged(_q);
   }
 
   @override
@@ -69,6 +89,7 @@ class _SearchScreenState extends State<SearchScreen> {
               .where((pl) => pl.name.toLowerCase().contains(q))
               .toList();
     final stations = q.isEmpty ? <Track>[] : _stations;
+    final youtube = lib.searchYouTube;
     final nothing =
         songs.isEmpty &&
         artists.isEmpty &&
@@ -94,14 +115,48 @@ class _SearchScreenState extends State<SearchScreen> {
                 ),
               ),
             ),
+            if (YouTubeApi.supported)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                child: Row(
+                  children: [
+                    ChoiceChip(
+                      avatar: Icon(
+                        AppIcons.library,
+                        size: 16,
+                        color: youtube ? p.ink : p.onInk,
+                      ),
+                      label: const Text('Your music'),
+                      selected: !youtube,
+                      onSelected: (_) => _setMode(lib, false),
+                    ),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      avatar: Icon(
+                        AppIcons.youtube,
+                        size: 16,
+                        color: youtube ? p.onInk : p.ink,
+                      ),
+                      label: const Text('YouTube'),
+                      selected: youtube,
+                      onSelected: (_) => _setMode(lib, true),
+                    ),
+                  ],
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: TextField(
                 controller: _ctl,
                 onChanged: _onChanged,
+                onSubmitted: (v) {
+                  if (youtube) lib.addYtSearch(v);
+                },
                 textInputAction: TextInputAction.search,
                 decoration: InputDecoration(
-                  hintText: 'Your songs, artists, playlists, radio',
+                  hintText: youtube
+                      ? 'Songs, artists and playlists on YouTube'
+                      : 'Your songs, artists, playlists, radio',
                   prefixIcon: const Icon(AppIcons.search, size: 20),
                   suffixIcon: _q.isEmpty
                       ? null
@@ -116,12 +171,26 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             ),
             Expanded(
-              child: q.isEmpty
+              child: youtube
+                  ? (q.isEmpty
+                        ? YouTubeBrowse(onSearch: _searchFor)
+                        : YouTubeResults(
+                            query: _q.trim(),
+                            onSearch: _searchFor,
+                          ))
+                  : q.isEmpty
                   ? _browse(p)
                   : nothing
                   ? EmptyState(
                       icon: AppIcons.search,
                       text: 'Nothing matches "$_q"',
+                      action: YouTubeApi.supported
+                          ? OutlinedButton.icon(
+                              icon: const Icon(AppIcons.youtube, size: 18),
+                              label: const Text('Search YouTube'),
+                              onPressed: () => _setMode(lib, true),
+                            )
+                          : null,
                     )
                   : ListView(
                       padding: const EdgeInsets.only(bottom: 24),
