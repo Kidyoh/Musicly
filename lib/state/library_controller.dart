@@ -29,12 +29,16 @@ enum PlayerStyle { classic, minimal }
 /// Every song here plays in full; there are no previews.
 class LibraryController extends ChangeNotifier {
   LibraryController() {
+    _instance = this;
     _restore().then((_) {
       loadHome();
       if (channelConnected) _startSync();
       if (deviceScanEnabled) scanDevice(askPermission: false);
     });
   }
+
+  static LibraryController? _instance;
+  static LibraryController? get instance => _instance;
 
   final RadioApi radio = RadioApi();
 
@@ -56,6 +60,9 @@ class LibraryController extends ChangeNotifier {
   /// Search looks on YouTube instead of in your own music.
   bool searchYouTube = false;
 
+  /// Search looks on Audius/Jamendo/FMA instead of in your own music.
+  bool searchOnline = false;
+
   // YouTube home feed
   List<Track> ytQuickPicks = [];
   List<Track> ytNewReleases = [];
@@ -70,6 +77,9 @@ class LibraryController extends ChangeNotifier {
   TelegramBot? bot;
   String? botUsername;
   final List<TelegramChannel> channels = [];
+
+  /// Jamendo API client_id (free from devportal.jamendo.com).
+  String? jamendoClientId;
 
   /// Songs people forwarded straight to the bot.
   final List<Track> _forwarded = [];
@@ -152,6 +162,18 @@ class LibraryController extends ChangeNotifier {
   String? forYouReason;
   List<Track> stations = []; // live radio, local first
   String? countryCode;
+  final Map<String, String> favoriteRadioCountries = {};
+
+  void toggleFavoriteRadioCountry(String code, String name) {
+    if (code.isEmpty) return;
+    if (favoriteRadioCountries.containsKey(code)) {
+      favoriteRadioCountries.remove(code);
+    } else {
+      favoriteRadioCountries[code] = name;
+    }
+    notifyListeners();
+    _save();
+  }
 
   bool isFavorite(Track t) => favorites.any((f) => f.id == t.id);
 
@@ -452,6 +474,13 @@ class LibraryController extends ChangeNotifier {
   void setSearchYouTube(bool on) {
     if (on == searchYouTube) return;
     searchYouTube = on;
+    _save();
+    notifyListeners();
+  }
+
+  void setSearchOnline(bool on) {
+    if (on == searchOnline) return;
+    searchOnline = on;
     _save();
     notifyListeners();
   }
@@ -1152,6 +1181,10 @@ class LibraryController extends ChangeNotifier {
 
   // ---- Persistence ---------------------------------------------------------------
 
+  Future<void> save() async {
+    await _save();
+  }
+
   Future<void> _save() async {
     try {
       final p = await SharedPreferences.getInstance();
@@ -1160,6 +1193,7 @@ class LibraryController extends ChangeNotifier {
       );
       await p.setString('files', enc(files));
       await p.setString('favorites', enc(favorites));
+      await p.setString('radio_countries', jsonEncode(favoriteRadioCountries));
       await p.setString('recent', enc(recent));
       await p.setString(
         'playlists',
@@ -1207,6 +1241,12 @@ class LibraryController extends ChangeNotifier {
       await p.setStringList('yt_searches', ytSearches);
       await p.setString('yt_history', enc(_ytHistory));
       await p.setBool('searchYouTube', searchYouTube);
+      await p.setBool('searchOnline', searchOnline);
+      if (jamendoClientId != null && jamendoClientId!.isNotEmpty) {
+        await p.setString('jamendo_client_id', jamendoClientId!);
+      } else {
+        await p.remove('jamendo_client_id');
+      }
       await p.setString('theme', themeMode.name);
       await p.setString('playerStyle', playerStyle.name);
     } catch (_) {}
@@ -1226,6 +1266,11 @@ class LibraryController extends ChangeNotifier {
       ];
       files.addAll(dec('files'));
       favorites.addAll(dec('favorites'));
+      favoriteRadioCountries.addAll(
+        Map<String, String>.from(
+          jsonDecode(p.getString('radio_countries') ?? '{}') as Map,
+        ),
+      );
       recent.addAll(dec('recent'));
       playlists.addAll(
         ((jsonDecode(p.getString('playlists') ?? '[]')) as List).map(
@@ -1286,6 +1331,8 @@ class LibraryController extends ChangeNotifier {
       _ytHistory.addAll(dec('yt_history'));
       searchYouTube =
           YouTubeApi.supported && (p.getBool('searchYouTube') ?? false);
+      searchOnline = p.getBool('searchOnline') ?? false;
+      jamendoClientId = p.getString('jamendo_client_id');
       themeMode = p.getString('theme') == 'dark'
           ? ThemeMode.dark
           : ThemeMode.light;

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../services/device_library.dart';
 import '../services/home_widgets.dart';
+import '../services/jamendo_api.dart';
 import '../state/library_controller.dart';
 import 'icons.dart';
 import 'nav.dart';
@@ -225,6 +226,66 @@ class LibraryScreen extends StatelessWidget {
     );
   }
 
+  Future<void> _apiKeysSheet(BuildContext context) async {
+    final lib = context.read<LibraryController>();
+    final p = Palette.of(context);
+    final ctl = TextEditingController(text: lib.jamendoClientId ?? '');
+    await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Online music API keys'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Jamendo (Creative Commons music)',
+              style: TextStyle(fontWeight: FontWeight.w600, color: p.ink),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Get a free client_id at devportal.jamendo.com',
+              style: TextStyle(color: p.sub, fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctl,
+              decoration: InputDecoration(
+                labelText: 'Jamendo client_id',
+                hintText: 'Paste your client_id here',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Audius & Free Music Archive work without API keys.',
+              style: TextStyle(color: p.sub, fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final value = ctl.text.trim();
+              lib.jamendoClientId = value.isEmpty ? null : value;
+              await lib.save();
+              if (ctx.mounted) {
+                Navigator.pop(ctx);
+                toast(context, value.isEmpty ? 'API key removed' : 'Jamendo API key saved');
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _scan(BuildContext context) async {
     final lib = context.read<LibraryController>();
     final ok = await lib.scanDevice();
@@ -439,6 +500,14 @@ class LibraryScreen extends StatelessWidget {
               'Backup & restore',
               _backupSummary(lib),
               () => _backupSheet(context),
+            ),
+            tile(
+              square(AppIcons.key),
+              'Online music API keys',
+              JamendoApi.instance.configured
+                  ? 'Jamendo: ✓ configured'
+                  : 'Jamendo: not configured (tap to add)',
+              () => _apiKeysSheet(context),
             ),
             if (HomeWidgets.supported)
               tile(

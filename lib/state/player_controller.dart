@@ -10,7 +10,10 @@ import 'package:just_audio_background/just_audio_background.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/track.dart';
+import '../services/audius_api.dart';
 import '../services/device_library.dart';
+import '../services/fma_api.dart';
+import '../services/jamendo_api.dart';
 import '../services/telegram_bot.dart';
 import '../services/youtube_api.dart';
 
@@ -148,6 +151,161 @@ class _YouTubeSource extends StreamAudioSource {
       stream: YouTubeApi.instance.bytes(track, from, to),
       contentType: audio.mime,
     );
+  }
+}
+
+/// Audius stream - gets direct stream URL on each request.
+class _AudiusSource extends StreamAudioSource {
+  _AudiusSource(this.track, {super.tag});
+  final Track track;
+  static const _baseUrl = 'https://api.audius.co/v1';
+
+  @override
+  Future<StreamAudioResponse> request([int? start, int? end]) async {
+    final uri = Uri.parse('$_baseUrl/tracks/${track.uri}/stream');
+    final from = start ?? 0;
+    final to = end;
+    final req = http.Request('GET', uri)
+      ..headers['Range'] = 'bytes=$from-${to == null ? '' : to - 1}';
+    final res = await http.Client().send(req).timeout(const Duration(seconds: 15));
+    if (res.statusCode != 200 && res.statusCode != 206) {
+      throw Exception('Audius stream HTTP ${res.statusCode}');
+    }
+    int? total = res.contentLength;
+    final range = res.headers['content-range'];
+    if (range != null && range.contains('/')) {
+      total = int.tryParse(range.split('/').last);
+    }
+    Stream<List<int>> stream = res.stream;
+    if (res.statusCode == 200 && from > 0) {
+      stream = _skip(stream, from);
+    }
+    return StreamAudioResponse(
+      rangeRequestsSupported: true,
+      sourceLength: total,
+      contentLength: res.contentLength,
+      offset: from,
+      stream: stream,
+      contentType: 'audio/mpeg',
+    );
+  }
+
+  static Stream<List<int>> _skip(Stream<List<int>> s, int n) async* {
+    var left = n;
+    await for (final chunk in s) {
+      if (left >= chunk.length) {
+        left -= chunk.length;
+        continue;
+      }
+      yield left == 0 ? chunk : chunk.sublist(left);
+      left = 0;
+    }
+  }
+}
+
+/// Jamendo stream - gets audio URL on first request, then streams.
+class _JamendoSource extends StreamAudioSource {
+  _JamendoSource(this.track, {super.tag});
+  final Track track;
+  Uri? _cachedUrl;
+
+  @override
+  Future<StreamAudioResponse> request([int? start, int? end]) async {
+    if (_cachedUrl == null) {
+      _cachedUrl = await JamendoApi.instance.getStreamUrl(track.uri!);
+      if (_cachedUrl == null) throw Exception('No Jamendo stream URL');
+    }
+    final from = start ?? 0;
+    final to = end;
+    final req = http.Request('GET', _cachedUrl!)
+      ..headers['Range'] = 'bytes=$from-${to == null ? '' : to - 1}';
+    final res = await http.Client().send(req).timeout(const Duration(seconds: 15));
+    if (res.statusCode != 200 && res.statusCode != 206) {
+      _cachedUrl = null; // Force re-fetch on retry
+      throw Exception('Jamendo stream HTTP ${res.statusCode}');
+    }
+    int? total = res.contentLength;
+    final range = res.headers['content-range'];
+    if (range != null && range.contains('/')) {
+      total = int.tryParse(range.split('/').last);
+    }
+    Stream<List<int>> stream = res.stream;
+    if (res.statusCode == 200 && from > 0) {
+      stream = _skip(stream, from);
+    }
+    return StreamAudioResponse(
+      rangeRequestsSupported: true,
+      sourceLength: total,
+      contentLength: res.contentLength,
+      offset: from,
+      stream: stream,
+      contentType: 'audio/mpeg',
+    );
+  }
+
+  static Stream<List<int>> _skip(Stream<List<int>> s, int n) async* {
+    var left = n;
+    await for (final chunk in s) {
+      if (left >= chunk.length) {
+        left -= chunk.length;
+        continue;
+      }
+      yield left == 0 ? chunk : chunk.sublist(left);
+      left = 0;
+    }
+  }
+}
+
+/// FMA stream - gets audio URL on first request, then streams.
+class _FmaSource extends StreamAudioSource {
+  _FmaSource(this.track, {super.tag});
+  final Track track;
+  Uri? _cachedUrl;
+
+  @override
+  Future<StreamAudioResponse> request([int? start, int? end]) async {
+    if (_cachedUrl == null) {
+      _cachedUrl = await FmaApi.instance.getStreamUrl(track.uri!);
+      if (_cachedUrl == null) throw Exception('No FMA stream URL');
+    }
+    final from = start ?? 0;
+    final to = end;
+    final req = http.Request('GET', _cachedUrl!)
+      ..headers['Range'] = 'bytes=$from-${to == null ? '' : to - 1}';
+    final res = await http.Client().send(req).timeout(const Duration(seconds: 15));
+    if (res.statusCode != 200 && res.statusCode != 206) {
+      _cachedUrl = null; // Force re-fetch on retry
+      throw Exception('FMA stream HTTP ${res.statusCode}');
+    }
+    int? total = res.contentLength;
+    final range = res.headers['content-range'];
+    if (range != null && range.contains('/')) {
+      total = int.tryParse(range.split('/').last);
+    }
+    Stream<List<int>> stream = res.stream;
+    if (res.statusCode == 200 && from > 0) {
+      stream = _skip(stream, from);
+    }
+    return StreamAudioResponse(
+      rangeRequestsSupported: true,
+      sourceLength: total,
+      contentLength: res.contentLength,
+      offset: from,
+      stream: stream,
+      contentType: 'audio/mpeg',
+    );
+  }
+
+  static Stream<List<int>> _skip(Stream<List<int>> s, int n) async* {
+    var left = n;
+    await for (final chunk in s) {
+      if (left >= chunk.length) {
+        left -= chunk.length;
+        continue;
+      }
+      yield left == 0 ? chunk : chunk.sublist(left);
+      left = 0;
+    }
   }
 }
 
@@ -352,6 +510,12 @@ class PlayerController extends ChangeNotifier {
         return kIsWeb
             ? AudioSource.uri(Uri.parse(t.uri!), tag: tag)
             : AudioSource.file(t.uri!, tag: tag);
+      case TrackSource.audius:
+        return _AudiusSource(t, tag: tag);
+      case TrackSource.jamendo:
+        return _JamendoSource(t, tag: tag);
+      case TrackSource.fma:
+        return _FmaSource(t, tag: tag);
     }
   }
 

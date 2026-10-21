@@ -2,7 +2,8 @@ import 'dart:typed_data';
 
 /// radio: live stations · telegram: your channel · device/file: music on the
 /// phone · youtube: songs streamed from YouTube.
-enum TrackSource { radio, telegram, device, file, youtube }
+/// audius: decentralized streaming · jamendo: Creative Commons · fma: Free Music Archive.
+enum TrackSource { radio, telegram, device, file, youtube, audius, jamendo, fma }
 
 class Track {
   Track({
@@ -20,10 +21,11 @@ class Track {
     this.mediaId,
     this.link,
     this.mime,
+    this.genre,
   });
 
   /// `rb:` radio, `tg:` Telegram, `ms:` phone library, `file:` picked files,
-  /// `yt:` YouTube.
+  /// `yt:` YouTube, `audius:`, `jamendo:`, `fma:`.
   final String id;
   final String title;
   final String artist;
@@ -50,10 +52,16 @@ class Track {
   /// File type, e.g. audio/mpeg (Telegram songs; used when saving them).
   final String? mime;
 
+  /// Genre for sources that provide it (FMA, Jamendo).
+  final String? genre;
+
   bool get isLocal =>
       source == TrackSource.device || source == TrackSource.file;
   bool get isRadio => source == TrackSource.radio;
   bool get isYouTube => source == TrackSource.youtube;
+  bool get isAudius => source == TrackSource.audius;
+  bool get isJamendo => source == TrackSource.jamendo;
+  bool get isFma => source == TrackSource.fma;
 
   /// Bytes-only tracks cannot be restored after a restart.
   /// Songs that only exist during a Jam (sent by a friend, or shown from
@@ -75,6 +83,7 @@ class Track {
     'mediaId': mediaId,
     'link': link,
     'mime': mime,
+    'genre': genre,
   };
 
   /// Null for songs from sources Musicly no longer has (old 30s previews).
@@ -103,5 +112,6 @@ class Track {
     mediaId: (j['mediaId'] as num?)?.toInt(),
     link: j['link'] as String?,
     mime: j['mime'] as String?,
+    genre: j['genre'] as String?,
   );
 }

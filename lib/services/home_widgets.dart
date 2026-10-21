@@ -63,6 +63,9 @@ class HomeWidgets {
     TrackSource.telegram => 'TELEGRAM',
     TrackSource.device || TrackSource.file => 'ON THIS PHONE',
     TrackSource.youtube => 'YOUTUBE',
+    TrackSource.audius => 'AUDIUS',
+    TrackSource.jamendo => 'JAMENDO',
+    TrackSource.fma => 'FMA',
   };
 
   static Future<void> _saveArt(Track t) async {

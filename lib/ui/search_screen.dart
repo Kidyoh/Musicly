@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/track.dart';
+import '../services/audius_api.dart';
+import '../services/fma_api.dart';
+import '../services/jamendo_api.dart';
 import '../services/radio_api.dart';
 import '../services/youtube_api.dart';
 import '../state/library_controller.dart';
@@ -18,6 +21,7 @@ import 'youtube_search.dart';
 
 /// Searches your own music (channel + phone), artists, playlists and radio,
 /// or, in YouTube mode, songs, artists and playlists on YouTube.
+/// or, in Online mode, songs from Audius, Jamendo, FMA.
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
   @override
@@ -64,8 +68,9 @@ class _SearchScreenState extends State<SearchScreen> {
     _onChanged(q);
   }
 
-  void _setMode(LibraryController lib, bool youtube) {
+  void _setMode(LibraryController lib, bool youtube, bool online) {
     lib.setSearchYouTube(youtube);
+    lib.setSearchOnline(online);
     _onChanged(_q);
   }
 
@@ -75,6 +80,8 @@ class _SearchScreenState extends State<SearchScreen> {
     final c = context.read<PlayerController>();
     final p = Palette.of(context);
     final q = _q.trim().toLowerCase();
+    final youtube = lib.searchYouTube;
+    final online = lib.searchOnline;
     bool hit(Track t) =>
         t.title.toLowerCase().contains(q) ||
         t.artist.toLowerCase().contains(q) ||
@@ -89,7 +96,6 @@ class _SearchScreenState extends State<SearchScreen> {
               .where((pl) => pl.name.toLowerCase().contains(q))
               .toList();
     final stations = q.isEmpty ? <Track>[] : _stations;
-    final youtube = lib.searchYouTube;
     final nothing =
         songs.isEmpty &&
         artists.isEmpty &&
@@ -124,22 +130,48 @@ class _SearchScreenState extends State<SearchScreen> {
                       avatar: Icon(
                         AppIcons.library,
                         size: 16,
-                        color: youtube ? p.ink : p.onInk,
+                        color: (!youtube && !online) ? p.onInk : p.sub,
                       ),
-                      label: const Text('Your music'),
-                      selected: !youtube,
-                      onSelected: (_) => _setMode(lib, false),
+                      label: Text('Your music',
+                          style: TextStyle(
+                            color: (!youtube && !online) ? p.onInk : p.ink,
+                            fontWeight: FontWeight.w500,
+                          )),
+                      selected: !youtube && !online,
+                      selectedColor: p.ink,
+                      onSelected: (_) => _setMode(lib, false, false),
                     ),
                     const SizedBox(width: 8),
                     ChoiceChip(
                       avatar: Icon(
                         AppIcons.youtube,
                         size: 16,
-                        color: youtube ? p.onInk : p.ink,
+                        color: youtube ? p.onInk : p.sub,
                       ),
-                      label: const Text('YouTube'),
+                      label: Text('YouTube',
+                          style: TextStyle(
+                            color: youtube ? p.onInk : p.ink,
+                            fontWeight: FontWeight.w500,
+                          )),
                       selected: youtube,
-                      onSelected: (_) => _setMode(lib, true),
+                      selectedColor: p.ink,
+                      onSelected: (_) => _setMode(lib, true, false),
+                    ),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      avatar: Icon(
+                        AppIcons.globe,
+                        size: 16,
+                        color: online ? p.onInk : p.sub,
+                      ),
+                      label: Text('Online',
+                          style: TextStyle(
+                            color: online ? p.onInk : p.ink,
+                            fontWeight: FontWeight.w500,
+                          )),
+                      selected: online,
+                      selectedColor: p.ink,
+                      onSelected: (_) => _setMode(lib, false, true),
                     ),
                   ],
                 ),
@@ -156,7 +188,9 @@ class _SearchScreenState extends State<SearchScreen> {
                 decoration: InputDecoration(
                   hintText: youtube
                       ? 'Songs, artists and playlists on YouTube'
-                      : 'Your songs, artists, playlists, radio',
+                      : online
+                          ? 'Songs on Audius, Jamendo, FMA'
+                          : 'Your songs, artists, playlists, radio',
                   prefixIcon: const Icon(AppIcons.search, size: 20),
                   suffixIcon: _q.isEmpty
                       ? null
@@ -178,6 +212,10 @@ class _SearchScreenState extends State<SearchScreen> {
                             query: _q.trim(),
                             onSearch: _searchFor,
                           ))
+                  : online
+                  ? (q.isEmpty
+                        ? _onlineBrowse(p)
+                        : _onlineResults(q, lib, c))
                   : q.isEmpty
                   ? _browse(p)
                   : nothing
@@ -188,7 +226,7 @@ class _SearchScreenState extends State<SearchScreen> {
                           ? OutlinedButton.icon(
                               icon: const Icon(AppIcons.youtube, size: 18),
                               label: const Text('Search YouTube'),
-                              onPressed: () => _setMode(lib, true),
+                              onPressed: () => _setMode(lib, true, false),
                             )
                           : null,
                     )
@@ -255,15 +293,18 @@ class _SearchScreenState extends State<SearchScreen> {
                         ],
                         if (stations.isNotEmpty) ...[
                           const SectionHeader('Radio stations'),
-                          HRow(
-                            height: 178,
-                            children: [
-                              for (var i = 0; i < stations.length; i++)
-                                StationCard(
-                                  station: stations[i],
-                                  onTap: () => c.playQueue(stations, i),
-                                ),
-                            ],
+                          SizedBox(
+                            height: 120,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              padding: const EdgeInsets.symmetric(horizontal: 20),
+                              itemCount: stations.length,
+                              separatorBuilder: (_, _) => const SizedBox(width: 12),
+                              itemBuilder: (_, i) => StationCard(
+                                station: stations[i],
+                                onTap: () => c.playQueue(stations, i),
+                              ),
+                            ),
                           ),
                         ],
                       ],
@@ -273,6 +314,100 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
       ),
     );
+  }
+
+  /// Before typing in Online mode: source badges.
+  Widget _onlineBrowse(Palette p) {
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+          sliver: SliverToBoxAdapter(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _sourceBadge(AppIcons.audius, 'Audius', 'Decentralized, full tracks', p),
+                _sourceBadge(AppIcons.jamendo, 'Jamendo', 'Creative Commons (needs API key)', p),
+                _sourceBadge(AppIcons.music, 'Free Music Archive', 'Curated CC music', p),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _sourceBadge(IconData icon, String name, String desc, Palette p) {
+    return Container(
+      width: 140,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: p.card,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 28, color: p.ink),
+          const SizedBox(height: 8),
+          Text(name, style: TextStyle(fontWeight: FontWeight.w700, color: p.ink)),
+          const SizedBox(height: 4),
+          Text(desc, style: TextStyle(fontSize: 11, color: p.sub), textAlign: TextAlign.center),
+        ],
+      ),
+    );
+  }
+
+  /// Results for Online mode: searches Audius, Jamendo, FMA in parallel.
+  Widget _onlineResults(String query, LibraryController lib, PlayerController c) {
+    return FutureBuilder<List<Track>>(
+      future: _searchOnline(query),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+          return EmptyState(
+            icon: AppIcons.search,
+            text: 'Nothing found on Audius, Jamendo, FMA',
+            action: OutlinedButton.icon(
+              icon: const Icon(AppIcons.youtube, size: 18),
+              label: const Text('Search YouTube instead'),
+              onPressed: () => _setMode(lib, true, false),
+            ),
+          );
+        }
+        final tracks = snapshot.data!;
+        final displayTracks = tracks.take(30).toList();
+        return ListView(
+          padding: const EdgeInsets.only(bottom: 24),
+          children: [
+            SectionHeader(
+              'Online results',
+              subtitle: count(displayTracks.length, 'match'),
+            ),
+            for (final track in displayTracks)
+              ArtTrackRow(
+                track: track,
+                onTap: () => c.playQueue(displayTracks, displayTracks.indexOf(track)),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<List<Track>> _searchOnline(String query) async {
+    final results = <Track>[];
+    await Future.wait([
+      AudiusApi.instance.search(query, limit: 15).then((r) => results.addAll(r)),
+      JamendoApi.instance.configured
+          ? JamendoApi.instance.search(query, limit: 10).then((r) => results.addAll(r))
+          : Future.value(),
+      FmaApi.instance.search(query, limit: 10).then((r) => results.addAll(r)),
+    ]);
+    return results;
   }
 
   /// Before typing: live radio and radio genres.

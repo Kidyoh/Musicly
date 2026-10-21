@@ -1,5 +1,6 @@
 import '../models/track.dart';
 import 'json_fetch.dart';
+import 'online_world_radio_api.dart';
 
 /// Radio Browser: a free, community directory of 50,000+ live internet
 /// radio stations (https://www.radio-browser.info). No key needed.
@@ -25,7 +26,42 @@ class RadioApi {
     ('classical', 'Classical'),
     ('country', 'Country'),
     ('80s', '80s'),
+    ('90s', '90s'),
+    ('00s', '00s'),
     ('news', 'News'),
+    ('talk', 'Talk'),
+    ('sports', 'Sports'),
+    ('christian', 'Christian'),
+    ('worship', 'Worship'),
+    ('contemporary', 'Contemporary'),
+    ('edm', 'EDM'),
+    ('house', 'House'),
+    ('techno', 'Techno'),
+    ('trance', 'Trance'),
+    ('ambient', 'Ambient'),
+    ('chillout', 'Chillout'),
+    ('instrumental', 'Instrumental'),
+    ('acoustic', 'Acoustic'),
+    ('folk', 'Folk'),
+    ('blues', 'Blues'),
+    ('soul', 'Soul'),
+    ('funk', 'Funk'),
+    ('disco', 'Disco'),
+    ('latin', 'Latin'),
+    ('reggaeton', 'Reggaeton'),
+    ('kpop', 'K-pop'),
+    ('jpop', 'J-pop'),
+    ('metal', 'Metal'),
+    ('punk', 'Punk'),
+    ('indie', 'Indie'),
+    ('alternative', 'Alternative'),
+    ('soundtrack', 'Soundtrack'),
+    ('meditation', 'Meditation'),
+    ('sleep', 'Sleep'),
+    ('focus', 'Focus'),
+    ('study', 'Study'),
+    ('workout', 'Workout'),
+    ('party', 'Party'),
   ];
 
   Future<List<Map>> _get(String path, Map<String, String> q) async {
@@ -110,14 +146,24 @@ class RadioApi {
         }),
       );
 
-  Future<List<Track>> search(String name, {int limit = 20}) async => _stations(
-    await _get('/json/stations/search', {
+  Future<List<Track>> search(String name, {int limit = 20}) async {
+    final primaryMaps = await _get('/json/stations/search', {
       'name': name,
       'order': 'clickcount',
       'reverse': 'true',
       'limit': '$limit',
-    }),
-  );
+    });
+    final primary = _stations(primaryMaps);
+    // If primary returns few results, supplement with Online World Radio
+    if (primary.length >= limit ~/ 2) return primary;
+    try {
+      final secondary = await OnlineWorldRadioApi().search(name: name, limit: limit - primary.length);
+      final seen = {for (final t in primary) t.id};
+      return [...primary, ...secondary.where((t) => seen.add(t.id))];
+    } catch (_) {
+      return primary;
+    }
+  }
 
   /// Tells the directory a station was played (helps its popularity ranking).
   Future<void> countClick(String trackId) async {
@@ -126,5 +172,18 @@ class RadioApi {
         Uri.parse('${_servers[_server]}/json/url/${trackId.substring(3)}'),
       );
     } catch (_) {}
+  }
+
+  /// Returns list of countries with station counts: [{'name': 'United States', 'iso_3166_1': 'US', 'stationcount': 1234}, ...]
+  Future<List<Map>> fetchCountries() async {
+    try {
+      final body = await _get('/json/countries', {});
+      return (body as List)
+          .cast<Map>()
+          .where((m) => (m['stationcount'] as int? ?? 0) > 0)
+          .toList();
+    } catch (_) {
+      return [];
+    }
   }
 }
