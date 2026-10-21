@@ -84,17 +84,24 @@ class Artwork extends StatelessWidget {
       ),
     );
 
-    Widget network(String url) => Image.network(
-      url,
-      width: size,
-      height: size,
-      fit: BoxFit.cover,
-      gaplessPlayback: true,
-      webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
-      frameBuilder: (_, child, frame, sync) =>
-          sync || frame != null ? child : placeholder,
-      errorBuilder: (_, _, _) => placeholder,
-    );
+    Widget network(String url) {
+      final img = Image.network(
+        url,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+        webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
+        frameBuilder: (_, child, frame, sync) =>
+            sync || frame != null ? child : placeholder,
+        errorBuilder: (_, _, _) => placeholder,
+      );
+      // YouTube thumbnails are 4:3 with black bars around a 16:9 picture;
+      // zooming in shows just the picture.
+      return url.contains('i.ytimg.com/vi/')
+          ? Transform.scale(scale: 4 / 3, child: img)
+          : img;
+    }
 
     Widget image;
     final t = track;
@@ -859,7 +866,7 @@ class HRow extends StatelessWidget {
 }
 
 /// Small tag after the artist: LIVE for radio, a tick for channel songs
-/// saved on the phone.
+/// saved on the phone, the YouTube mark for YouTube songs.
 class SourceBadge extends StatelessWidget {
   const SourceBadge(this.track, {super.key});
   final Track track;
@@ -871,6 +878,9 @@ class SourceBadge extends StatelessWidget {
       return saved
           ? Icon(AppIcons.saved, size: 13, color: Palette.of(context).sub)
           : const SizedBox.shrink();
+    }
+    if (track.isYouTube) {
+      return Icon(AppIcons.youtube, size: 14, color: Palette.of(context).sub);
     }
     if (!track.isRadio) return const SizedBox.shrink();
     return Container(

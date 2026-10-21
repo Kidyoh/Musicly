@@ -1,7 +1,9 @@
 import 'dart:typed_data';
 
-/// radio: live stations · telegram: your channel · device/file: music on the phone.
-enum TrackSource { radio, telegram, device, file }
+/// radio: live stations · telegram: your channel · device/file: music on the
+/// phone · youtube: songs streamed from YouTube.
+/// audius: decentralized streaming · jamendo: Creative Commons · fma: Free Music Archive.
+enum TrackSource { radio, telegram, device, file, youtube, audius, jamendo, fma }
 
 class Track {
   Track({
@@ -19,16 +21,18 @@ class Track {
     this.mediaId,
     this.link,
     this.mime,
+    this.genre,
   });
 
-  /// `rb:` radio, `tg:` Telegram, `ms:` phone library, `file:` picked files.
+  /// `rb:` radio, `tg:` Telegram, `ms:` phone library, `file:` picked files,
+  /// `yt:` YouTube, `audius:`, `jamendo:`, `fma:`.
   final String id;
   final String title;
   final String artist;
   final TrackSource source;
 
   /// File path or content:// URI for phone songs, the stream link for radio,
-  /// and the Telegram file id for channel songs.
+  /// the Telegram file id for channel songs and the video id for YouTube.
   final String? uri;
 
   /// In-memory audio for files picked on web, where no path exists.
@@ -42,15 +46,22 @@ class Track {
   /// MediaStore id, used to load embedded album art on Android.
   final int? mediaId;
 
-  /// Web page (radio station homepage).
+  /// Web page (radio station homepage, YouTube watch page).
   final String? link;
 
   /// File type, e.g. audio/mpeg (Telegram songs; used when saving them).
   final String? mime;
 
+  /// Genre for sources that provide it (FMA, Jamendo).
+  final String? genre;
+
   bool get isLocal =>
       source == TrackSource.device || source == TrackSource.file;
   bool get isRadio => source == TrackSource.radio;
+  bool get isYouTube => source == TrackSource.youtube;
+  bool get isAudius => source == TrackSource.audius;
+  bool get isJamendo => source == TrackSource.jamendo;
+  bool get isFma => source == TrackSource.fma;
 
   /// Bytes-only tracks cannot be restored after a restart.
   /// Songs that only exist during a Jam (sent by a friend, or shown from
@@ -72,6 +83,7 @@ class Track {
     'mediaId': mediaId,
     'link': link,
     'mime': mime,
+    'genre': genre,
   };
 
   /// Null for songs from sources Musicly no longer has (old 30s previews).
@@ -100,5 +112,6 @@ class Track {
     mediaId: (j['mediaId'] as num?)?.toInt(),
     link: j['link'] as String?,
     mime: j['mime'] as String?,
+    genre: j['genre'] as String?,
   );
 }

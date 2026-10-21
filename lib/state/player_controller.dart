@@ -10,8 +10,12 @@ import 'package:just_audio_background/just_audio_background.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/track.dart';
+import '../services/audius_api.dart';
 import '../services/device_library.dart';
+import '../services/fma_api.dart';
+import '../services/jamendo_api.dart';
 import '../services/telegram_bot.dart';
+import '../services/youtube_api.dart';
 
 /// Picked files on web live only in memory.
 class _BytesSource extends StreamAudioSource {
@@ -118,6 +122,193 @@ class _LazySource extends StreamAudioSource {
   }
 }
 
+/// YouTube audio, looked up when the player asks for it. Links expire after
+/// a few hours, so each request goes through [YouTubeApi.audioFor].
+class _YouTubeSource extends StreamAudioSource {
+  _YouTubeSource(this.track, {super.tag});
+  final Track track;
+
+  @override
+  Future<StreamAudioResponse> request([int? start, int? end]) async {
+    final audio = await YouTubeApi.instance.audioFor(track);
+    final from = start ?? 0;
+    final to = math.min(end ?? audio.length, audio.length);
+    if (from >= to) {
+      return StreamAudioResponse(
+        rangeRequestsSupported: true,
+        sourceLength: audio.length,
+        contentLength: 0,
+        offset: from,
+        stream: const Stream.empty(),
+        contentType: audio.mime,
+      );
+    }
+    return StreamAudioResponse(
+      rangeRequestsSupported: true,
+      sourceLength: audio.length,
+      contentLength: to - from,
+      offset: from,
+      stream: YouTubeApi.instance.bytes(track, from, to),
+      contentType: audio.mime,
+    );
+  }
+}
+
+/// Audius stream - gets direct stream URL on each request.
+class _AudiusSource extends StreamAudioSource {
+  _AudiusSource(this.track, {super.tag});
+  final Track track;
+  static const _baseUrl = 'https://api.audius.co/v1';
+
+  @override
+  Future<StreamAudioResponse> request([int? start, int? end]) async {
+    final uri = Uri.parse('$_baseUrl/tracks/${track.uri}/stream');
+    final from = start ?? 0;
+    final to = end;
+    final req = http.Request('GET', uri)
+      ..headers['Range'] = 'bytes=$from-${to == null ? '' : to - 1}';
+    final res = await http.Client().send(req).timeout(const Duration(seconds: 15));
+    if (res.statusCode != 200 && res.statusCode != 206) {
+      throw Exception('Audius stream HTTP ${res.statusCode}');
+    }
+    int? total = res.contentLength;
+    final range = res.headers['content-range'];
+    if (range != null && range.contains('/')) {
+      total = int.tryParse(range.split('/').last);
+    }
+    Stream<List<int>> stream = res.stream;
+    if (res.statusCode == 200 && from > 0) {
+      stream = _skip(stream, from);
+    }
+    return StreamAudioResponse(
+      rangeRequestsSupported: true,
+      sourceLength: total,
+      contentLength: res.contentLength,
+      offset: from,
+      stream: stream,
+      contentType: 'audio/mpeg',
+    );
+  }
+
+  static Stream<List<int>> _skip(Stream<List<int>> s, int n) async* {
+    var left = n;
+    await for (final chunk in s) {
+      if (left >= chunk.length) {
+        left -= chunk.length;
+        continue;
+      }
+      yield left == 0 ? chunk : chunk.sublist(left);
+      left = 0;
+    }
+  }
+}
+
+/// Jamendo stream - gets audio URL on first request, then streams.
+class _JamendoSource extends StreamAudioSource {
+  _JamendoSource(this.track, {super.tag});
+  final Track track;
+  Uri? _cachedUrl;
+
+  @override
+  Future<StreamAudioResponse> request([int? start, int? end]) async {
+    if (_cachedUrl == null) {
+      _cachedUrl = await JamendoApi.instance.getStreamUrl(track.uri!);
+      if (_cachedUrl == null) throw Exception('No Jamendo stream URL');
+    }
+    final from = start ?? 0;
+    final to = end;
+    final req = http.Request('GET', _cachedUrl!)
+      ..headers['Range'] = 'bytes=$from-${to == null ? '' : to - 1}';
+    final res = await http.Client().send(req).timeout(const Duration(seconds: 15));
+    if (res.statusCode != 200 && res.statusCode != 206) {
+      _cachedUrl = null; // Force re-fetch on retry
+      throw Exception('Jamendo stream HTTP ${res.statusCode}');
+    }
+    int? total = res.contentLength;
+    final range = res.headers['content-range'];
+    if (range != null && range.contains('/')) {
+      total = int.tryParse(range.split('/').last);
+    }
+    Stream<List<int>> stream = res.stream;
+    if (res.statusCode == 200 && from > 0) {
+      stream = _skip(stream, from);
+    }
+    return StreamAudioResponse(
+      rangeRequestsSupported: true,
+      sourceLength: total,
+      contentLength: res.contentLength,
+      offset: from,
+      stream: stream,
+      contentType: 'audio/mpeg',
+    );
+  }
+
+  static Stream<List<int>> _skip(Stream<List<int>> s, int n) async* {
+    var left = n;
+    await for (final chunk in s) {
+      if (left >= chunk.length) {
+        left -= chunk.length;
+        continue;
+      }
+      yield left == 0 ? chunk : chunk.sublist(left);
+      left = 0;
+    }
+  }
+}
+
+/// FMA stream - gets audio URL on first request, then streams.
+class _FmaSource extends StreamAudioSource {
+  _FmaSource(this.track, {super.tag});
+  final Track track;
+  Uri? _cachedUrl;
+
+  @override
+  Future<StreamAudioResponse> request([int? start, int? end]) async {
+    if (_cachedUrl == null) {
+      _cachedUrl = await FmaApi.instance.getStreamUrl(track.uri!);
+      if (_cachedUrl == null) throw Exception('No FMA stream URL');
+    }
+    final from = start ?? 0;
+    final to = end;
+    final req = http.Request('GET', _cachedUrl!)
+      ..headers['Range'] = 'bytes=$from-${to == null ? '' : to - 1}';
+    final res = await http.Client().send(req).timeout(const Duration(seconds: 15));
+    if (res.statusCode != 200 && res.statusCode != 206) {
+      _cachedUrl = null; // Force re-fetch on retry
+      throw Exception('FMA stream HTTP ${res.statusCode}');
+    }
+    int? total = res.contentLength;
+    final range = res.headers['content-range'];
+    if (range != null && range.contains('/')) {
+      total = int.tryParse(range.split('/').last);
+    }
+    Stream<List<int>> stream = res.stream;
+    if (res.statusCode == 200 && from > 0) {
+      stream = _skip(stream, from);
+    }
+    return StreamAudioResponse(
+      rangeRequestsSupported: true,
+      sourceLength: total,
+      contentLength: res.contentLength,
+      offset: from,
+      stream: stream,
+      contentType: 'audio/mpeg',
+    );
+  }
+
+  static Stream<List<int>> _skip(Stream<List<int>> s, int n) async* {
+    var left = n;
+    await for (final chunk in s) {
+      if (left >= chunk.length) {
+        left -= chunk.length;
+        continue;
+      }
+      yield left == 0 ? chunk : chunk.sublist(left);
+      left = 0;
+    }
+  }
+}
+
 enum EqPreset {
   flat,
   bassBoost,
@@ -182,6 +373,13 @@ class PlayerController extends ChangeNotifier {
   /// Called whenever a new song starts, for history and recommendations.
   void Function(Track t)? onTrackStarted;
 
+  /// Keep a YouTube queue going with similar songs when it runs out.
+  bool autoplay = true;
+  bool _extending = false;
+
+  /// Jam guests follow the host's queue, so theirs never grows by itself.
+  bool _following = false;
+
   String? playError;
 
   /// "Artist - Song" announced by a live radio stream, when it sends one.
@@ -235,6 +433,7 @@ class PlayerController extends ChangeNotifier {
       }
       if (changed && current != null) onTrackStarted?.call(current!);
       _prefetchNext();
+      _maybeExtend();
       notifyListeners();
     });
     player.playerStateStream.listen((_) => notifyListeners());
@@ -302,6 +501,8 @@ class PlayerController extends ChangeNotifier {
         }
         final (key, resolve) = _telegramLink(t);
         return _LazySource(key, resolve, tag: tag);
+      case TrackSource.youtube:
+        return _YouTubeSource(t, tag: tag);
       case TrackSource.radio:
       case TrackSource.device:
         return AudioSource.uri(Uri.parse(t.uri!), tag: tag);
@@ -309,6 +510,12 @@ class PlayerController extends ChangeNotifier {
         return kIsWeb
             ? AudioSource.uri(Uri.parse(t.uri!), tag: tag)
             : AudioSource.file(t.uri!, tag: tag);
+      case TrackSource.audius:
+        return _AudiusSource(t, tag: tag);
+      case TrackSource.jamendo:
+        return _JamendoSource(t, tag: tag);
+      case TrackSource.fma:
+        return _FmaSource(t, tag: tag);
     }
   }
 
@@ -318,6 +525,10 @@ class PlayerController extends ChangeNotifier {
     final pos = order.indexOf(currentIndex);
     if (pos < 0 || pos + 1 >= order.length) return;
     final next = queue[order[pos + 1]];
+    if (next.isYouTube && YouTubeApi.supported) {
+      YouTubeApi.instance.warm(next);
+      return;
+    }
     if (next.source != TrackSource.telegram ||
         localCopy?.call(next) != null ||
         kIsWeb) {
@@ -325,6 +536,55 @@ class PlayerController extends ChangeNotifier {
     }
     final (key, resolve) = _telegramLink(next);
     _LazySource.warm(key, resolve);
+  }
+
+  /// Near the end of a YouTube queue, adds songs like the one playing.
+  Future<void> _maybeExtend() async {
+    final t = current;
+    if (!autoplay ||
+        _following ||
+        _extending ||
+        t == null ||
+        !t.isYouTube ||
+        !YouTubeApi.supported ||
+        loopMode != LoopMode.off ||
+        currentIndex < queue.length - 2) {
+      return;
+    }
+    _extending = true;
+    try {
+      final have = {for (final q in queue) q.id};
+      final more = (await YouTubeApi.instance.related(t))
+          .where((x) => !have.contains(x.id))
+          .take(10)
+          .toList();
+      if (more.isNotEmpty && current?.id == t.id) {
+        queue.addAll(more);
+        notifyListeners();
+        await player.addAudioSources(more.map(_sourceFor).toList());
+      }
+    } catch (_) {
+    } finally {
+      _extending = false;
+    }
+  }
+
+  void setAutoplay(bool on) {
+    autoplay = on;
+    notifyListeners();
+    _saveSettings();
+    if (on) _maybeExtend();
+  }
+
+  /// Plays [seed] followed by songs like it from YouTube. Returns false when
+  /// no similar songs could be found (the seed still plays).
+  Future<bool> startRadio(Track seed) async {
+    var more = <Track>[];
+    try {
+      more = await YouTubeApi.instance.related(seed);
+    } catch (_) {}
+    unawaited(playQueue([seed, ...more.where((x) => x.id != seed.id)], 0));
+    return more.isNotEmpty;
   }
 
   int _retries = 0;
@@ -337,6 +597,16 @@ class PlayerController extends ChangeNotifier {
     if (t == null) return;
     if (t.source == TrackSource.telegram) {
       _LazySource.forget(_telegramLink(t).$1);
+    }
+    if (t.isYouTube) {
+      YouTubeApi.instance.forget(t);
+      if (YouTubeApi.instance.blocked) {
+        playError =
+            'YouTube is asking to confirm this isn\'t a bot. Try again in a few minutes.';
+        notifyListeners();
+        await player.pause();
+        return;
+      }
     }
     _retries++;
     await Future.delayed(Duration(milliseconds: 600 * _retries));
@@ -369,6 +639,9 @@ class PlayerController extends ChangeNotifier {
       if (url != null) artUri = Uri.parse(url);
     } else if (t.artworkUrl?.startsWith('/') ?? false) {
       artUri = Uri.file(t.artworkUrl!); // a cover a Jam friend sent
+    } else if (t.isYouTube && t.uri != null) {
+      // The wide thumbnail has no black bars, unlike the default one.
+      artUri = Uri.parse('https://i.ytimg.com/vi/${t.uri}/mqdefault.jpg');
     } else if (t.artworkUrl != null) {
       artUri = Uri.parse(t.artworkUrl!);
     }
@@ -396,9 +669,11 @@ class PlayerController extends ChangeNotifier {
     }
   }
 
-  /// Web only: browsers need real links up front for Telegram songs.
+  /// Web only: browsers need real links up front for Telegram songs, and
+  /// can't play YouTube songs at all.
   Future<List<Track>> _fresh(List<Track> tracks) async {
     if (!kIsWeb) return tracks;
+    tracks = tracks.where((t) => !t.isYouTube).toList();
     final tg = tracks
         .where((t) => t.source == TrackSource.telegram)
         .where((t) => !_webUrls.containsKey(t.uri))
@@ -429,10 +704,10 @@ class PlayerController extends ChangeNotifier {
     if (kIsWeb) {
       final target = tracks[index].id;
       tracks = await _fresh(tracks);
+      if (tracks.isEmpty) return;
       index = tracks
           .indexWhere((t) => t.id == target)
           .clamp(0, tracks.length - 1);
-      if (tracks.isEmpty) return;
     }
     if (!_askedNotifications) {
       _askedNotifications = true;
@@ -440,6 +715,7 @@ class PlayerController extends ChangeNotifier {
     }
     queue = List.of(tracks);
     currentIndex = index;
+    _following = false;
     _retries = 0;
     playError = null;
     nowOnAir = null;
@@ -460,9 +736,12 @@ class PlayerController extends ChangeNotifier {
         await player.seek(Duration.zero, index: player.effectiveIndices.first);
       }
       unawaited(_applyEffects());
+      unawaited(_maybeExtend());
       await player.play();
-    } catch (_) {
-      playError = 'Could not play this song';
+    } catch (e) {
+      playError = e is YouTubeBlocked
+          ? 'YouTube is asking to confirm this isn\'t a bot. Try again in a few minutes.'
+          : 'Could not play this song';
       notifyListeners();
     }
   }
@@ -476,6 +755,7 @@ class PlayerController extends ChangeNotifier {
   }) async {
     queue = [t];
     currentIndex = 0;
+    _following = true;
     _retries = 0;
     playError = null;
     nowOnAir = null;
@@ -707,6 +987,7 @@ class PlayerController extends ChangeNotifier {
           'loudnessGain': loudnessGain,
           'smoothFade': smoothFade,
           'fadeSeconds': fadeSeconds,
+          'autoplay': autoplay,
         }),
       );
     } catch (_) {}
@@ -729,6 +1010,7 @@ class PlayerController extends ChangeNotifier {
       loudnessGain = (j['loudnessGain'] as num?)?.toDouble() ?? 4;
       smoothFade = j['smoothFade'] as bool? ?? true;
       fadeSeconds = (j['fadeSeconds'] as num?)?.toDouble() ?? 3;
+      autoplay = j['autoplay'] as bool? ?? true;
       notifyListeners();
     } catch (_) {}
   }

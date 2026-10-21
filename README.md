@@ -13,6 +13,11 @@ A monochrome, Material 3 music player for Android, iOS and web, built with Flutt
 - **Your phone's music**: one tap scans the phone's library (Android); on iOS and web, pick files.
 - **Live radio** ([Radio Browser](https://www.radio-browser.info)): real stations worldwide, near you,
   by genre or by name, with "now on air" titles.
+- **YouTube** (Android and iOS): switch Search to YouTube to find songs, artists and playlists, with
+  suggestions as you type. YouTube songs play like any other: in the queue, on the lock screen, with
+  lyrics, likes and your playlists. Follow artists, save playlists, and "Start radio" on any song for
+  an endless run of similar ones. Read straight from YouTube (no key, no server), so YouTube can
+  occasionally pause playback with a bot check; it lifts after a few minutes.
 
 ## Features
 
@@ -24,9 +29,11 @@ A monochrome, Material 3 music player for Android, iOS and web, built with Flutt
     as temporary links on [Litterbox](https://litterbox.catbox.moe) that delete themselves within
     12 hours. No account or server of our own.
   - The host can let friends control playback and can remove people.
-- **Your mix**: a fresh blend of your channel and phone songs, weighted toward what you like and play
+- **Your mix**: a fresh blend of your channel, phone and YouTube songs, weighted toward what you like
+  and play; **Quick picks** from YouTube based on what you play, and new songs from artists you follow
 - **Hotlist**: your most played songs, and the most popular radio stations
-- **Artist pages** built from your own music; **your playlists** with drag to reorder
+- **Artist pages** built from your own music plus their popular songs on YouTube; **your playlists**
+  with drag to reorder
 - **Now Playing** with a glow from the cover, waveform scrubber and **synced lyrics**
   ([LRCLIB](https://lrclib.net)) with tap-to-seek and timing adjustment
 - **Home-screen widgets** (Android) and a lock-screen player with cover art for every source

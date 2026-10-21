@@ -152,6 +152,11 @@ abstract final class AppIcons {
     0xe802,
     fontFamily: 'PhosphorRegular',
   );
+  static const IconData youtube = IconData(
+    0xe4fc,
+    fontFamily: 'PhosphorRegular',
+  );
+  static const IconData youtubeOn = IconData(0xe4fc, fontFamily: 'PhosphorFill');
   static const IconData telegram = IconData(
     0xe5bc,
     fontFamily: 'PhosphorRegular',
@@ -160,6 +165,10 @@ abstract final class AppIcons {
     0xe5bc,
     fontFamily: 'PhosphorFill',
   );
+  static const IconData audius = IconData(0xe8e6, fontFamily: 'PhosphorRegular');
+  static const IconData jamendo = IconData(0xe7a2, fontFamily: 'PhosphorRegular');
+  static const IconData globe = IconData(0xe288, fontFamily: 'PhosphorRegular');
+  static const IconData user = IconData(0xe8a2, fontFamily: 'PhosphorRegular');
   static const IconData connected = IconData(
     0xeb5a,
     fontFamily: 'PhosphorRegular',

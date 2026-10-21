@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/track.dart';
 import '../services/lyrics_api.dart';
+import '../services/youtube_api.dart';
 import '../state/library_controller.dart';
 import '../state/lyrics_controller.dart';
 import '../state/player_controller.dart';
@@ -160,10 +161,18 @@ void showTrackOptions(
                 const SnackBar(content: Text('Added to queue')),
               );
             }),
+            if (!t.isRadio && YouTubeApi.supported)
+              _tile(AppIcons.radio, 'Start radio', () {
+                Navigator.pop(ctx);
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Starting radio…')),
+                );
+                c.startRadio(t);
+              }, sub: 'This song, then similar ones from YouTube'),
             if (!t.isRadio && t.artist != 'Unknown artist')
               _tile(AppIcons.artist, 'Go to artist', () {
                 Navigator.pop(ctx);
-                openArtist(context, t.artist);
+                openArtistOf(context, t);
               }),
             if (t.source == TrackSource.device && t.albumId != null)
               _tile(AppIcons.disc, 'Go to album', () {
@@ -178,6 +187,22 @@ void showTrackOptions(
                 lib.downloadSongs([t]);
                 messenger.showSnackBar(
                   const SnackBar(content: Text('Saving to Music/Musicly')),
+                );
+              }),
+            if (t.isYouTube && YouTubeApi.supported && !lib.isDownloaded(t))
+              _tile(AppIcons.download, 'Download for offline', () {
+                Navigator.pop(ctx);
+                lib.downloadYouTubeTrack(t);
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Downloading to Music/Musicly…')),
+                );
+              }),
+            if (t.isYouTube && t.link != null)
+              _tile(AppIcons.youtube, 'Watch on YouTube', () {
+                Navigator.pop(ctx);
+                launchUrl(
+                  Uri.parse(t.link!),
+                  mode: LaunchMode.externalApplication,
                 );
               }),
             if (t.isRadio && t.link != null)
@@ -589,6 +614,18 @@ void showQueue(BuildContext context) {
                   style: TextStyle(color: p.sub),
                 ),
               ),
+              if (YouTubeApi.supported && (c.current?.isYouTube ?? false))
+                SwitchListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+                  secondary: const Icon(AppIcons.radio, size: 22),
+                  title: const Text(
+                    'Autoplay',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  subtitle: const Text('Keep going with similar songs'),
+                  value: c.autoplay,
+                  onChanged: c.setAutoplay,
+                ),
               Expanded(
                 child: ReorderableListView.builder(
                   scrollController: scroll,
