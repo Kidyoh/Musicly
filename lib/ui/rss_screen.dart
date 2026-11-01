@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../models/rss_feed.dart';
 import '../models/track.dart';
+import '../services/rss_catalog.dart';
 import '../state/library_controller.dart';
 import 'collection_screen.dart';
 import 'icons.dart';
@@ -22,6 +23,11 @@ class RssScreen extends StatelessWidget {
     );
     if (feed != null && context.mounted) toast(context, 'Added ${feed.title}');
   }
+
+  void _browse(BuildContext context) => Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => const _CatalogScreen()),
+  );
 
   void _open(BuildContext context, RssFeed f) {
     final lib = context.read<LibraryController>();
@@ -99,6 +105,11 @@ class RssScreen extends StatelessWidget {
         title: const Text('RSS feeds'),
         actions: [
           IconButton(
+            tooltip: 'Browse feeds',
+            icon: const Icon(AppIcons.queue),
+            onPressed: () => _browse(context),
+          ),
+          IconButton(
             tooltip: 'Add a feed',
             icon: const Icon(AppIcons.add),
             onPressed: () => _add(context),
@@ -109,15 +120,48 @@ class RssScreen extends StatelessWidget {
           ? EmptyState(
               icon: AppIcons.broadcast,
               text: 'Add the link of an RSS feed with audio in it, such as a podcast or a music mix, and stream it here.',
-              action: FilledButton.icon(
-                onPressed: () => _add(context),
-                icon: const Icon(AppIcons.add, size: 18),
-                label: const Text('Add a feed'),
+              action: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FilledButton.icon(
+                    onPressed: () => _browse(context),
+                    icon: const Icon(AppIcons.queue, size: 18),
+                    label: const Text('Browse suggested feeds'),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: () => _add(context),
+                    icon: const Icon(AppIcons.add, size: 18),
+                    label: const Text('Paste a link'),
+                  ),
+                ],
               ),
             )
           : ListView(
               padding: const EdgeInsets.only(bottom: 24),
               children: [
+                InkWell(
+                  onTap: () => _browse(context),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(AppIcons.queue, color: p.sub, size: 20),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'Browse suggested feeds',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        Icon(AppIcons.chevron, color: p.sub, size: 18),
+                      ],
+                    ),
+                  ),
+                ),
                 for (final f in lib.feeds)
                   InkWell(
                     onTap: () => _open(context, f),
@@ -246,4 +290,122 @@ class _AddFeedDialogState extends State<_AddFeedDialog> {
       ),
     ],
   );
+}
+
+/// Ready-made feeds to pick from; tap Add to keep one.
+class _CatalogScreen extends StatefulWidget {
+  const _CatalogScreen();
+  @override
+  State<_CatalogScreen> createState() => _CatalogScreenState();
+}
+
+class _CatalogScreenState extends State<_CatalogScreen> {
+  final Set<String> _busy = {};
+
+  Future<void> _add(RssSuggestion s) async {
+    final lib = context.read<LibraryController>();
+    setState(() => _busy.add(s.url));
+    try {
+      await lib.addFeed(s.url);
+      if (mounted) toast(context, 'Added ${s.title}');
+    } catch (e) {
+      if (mounted) {
+        toast(context, e.toString().replaceFirst('Exception: ', ''));
+      }
+    }
+    if (mounted) setState(() => _busy.remove(s.url));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lib = context.watch<LibraryController>();
+    final p = Palette.of(context);
+    final groups = <String, List<RssSuggestion>>{};
+    for (final s in rssCatalog) {
+      groups.putIfAbsent(s.group, () => []).add(s);
+    }
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(AppIcons.back),
+          onPressed: () => Navigator.maybePop(context),
+        ),
+        title: const Text('Suggested feeds'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: 24),
+        children: [
+          for (final g in groups.entries) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
+              child: Text(
+                g.key,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            for (final s in g.value)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: p.card,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(AppIcons.broadcast, color: p.sub),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            s.title,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            s.note,
+                            style: TextStyle(color: p.sub, fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    if (lib.feeds.any((f) => f.url == s.url))
+                      Icon(AppIcons.check, color: p.sub)
+                    else if (_busy.contains(s.url))
+                      const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    else
+                      FilledButton(
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(64, 38),
+                        ),
+                        onPressed: () => _add(s),
+                        child: const Text('Add'),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
 }
