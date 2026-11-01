@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Musicly</string>
+    <string name="player_channel">Now playing</string>
+</resources>
