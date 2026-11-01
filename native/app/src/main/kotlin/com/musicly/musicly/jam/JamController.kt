@@ -90,6 +90,7 @@ class JamController(
     private var playerWatch: Job? = null
     private var playerListener: Player.Listener? = null
 
+    @set:JvmName("assignGuestsControl")
     var guestsControl by mutableStateOf(false)
         private set
 
@@ -600,6 +601,7 @@ class JamController(
     // ---- Listening along (online) ------------------------------------------
 
     /** Plays the host's songs on this phone, in step with the host. */
+    @set:JvmName("assignListenHere")
     var listenHere by mutableStateOf(false)
     private var followingId: String? = null
     private var loading = false

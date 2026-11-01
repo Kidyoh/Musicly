@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -107,12 +110,18 @@ fun HomeScreen() {
                         Spacer(Modifier.height(2.dp))
                         Text("Musicly", fontSize = 30.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.8).sp, color = p.ink)
                     }
-                    AppIconButton(AppIcons.jam, onClick = { openPage(env, "jam") { JamScreen() } })
+                    if (env.jam.supported) {
+                        AppIconButton(
+                            if (env.jam.active) AppIcons.jamOn else AppIcons.jam,
+                            onClick = { openPage(env, "jam") { JamScreen() } },
+                        )
+                    }
                     AppIconButton(AppIcons.sound, onClick = { showSound(env) })
                     AppIconButton(if (p.dark) AppIcons.sun else AppIcons.moon, onClick = { lib.toggleTheme() })
                 }
             }
             item { Spacer(Modifier.height(18.dp)) }
+            item { JamBanner() }
             item { ForYouCard(lib) }
             if (songs.isEmpty()) item { GetStarted() }
             if (recent.isNotEmpty()) {
@@ -289,6 +298,37 @@ private fun ForYouCard(lib: Library) {
                     Text("Play mix", color = p.dock, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
             }
+        }
+    }
+}
+
+/** Shown on Home while you're in a Jam, so it's one tap away. */
+@Composable
+private fun JamBanner() {
+    val env = LocalEnv.current
+    val jam = env.jam
+    if (!jam.active) return
+    val p = palette()
+    val people = if (jam.role == com.musicly.musicly.jam.JamRole.host) jam.guests.size + 1 else jam.state.people.size
+    Box(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 14.dp)) {
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(p.card)
+                .clickable { openPage(env, "jam") { JamScreen() } }
+                .padding(horizontal = 16.dp, vertical = 8.dp).heightIn(min = 72.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(40.dp).clip(CircleShape).background(p.ink), contentAlignment = Alignment.Center) {
+                Icon(AppIcons.jamOn, size = 20.dp, tint = p.onInk)
+            }
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text(jam.jamName, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = p.ink, maxLines = 1)
+                Text(
+                    "${if (jam.role == com.musicly.musicly.jam.JamRole.host) "You're hosting" else "You're in"} \u00B7 ${count(people, "person", "people")}",
+                    fontSize = 14.sp, color = p.sub,
+                )
+            }
+            Icon(AppIcons.chevron, size = 18.dp, tint = p.ink)
         }
     }
 }
