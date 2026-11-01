@@ -60,6 +60,12 @@ android {
     }
 }
 
+tasks.withType<Test>().configureEach {
+    // Robolectric downloads its android-all jar at first use; MUSICLY_SHOTS selects the PNG output dir.
+    System.getenv("ROBOLECTRIC_REPO")?.let { systemProperty("robolectric.dependency.repo.url", it) }
+    System.getenv("MUSICLY_SHOTS")?.let { systemProperty("MUSICLY_SHOTS", it) }
+}
+
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17

@@ -14,10 +14,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.musicly.musicly.data.Library
+import com.musicly.musicly.player.PlayerController
 import com.musicly.musicly.data.Track
 import com.musicly.musicly.data.TrackSource
 import com.musicly.musicly.data.UserPlaylist
@@ -142,6 +144,10 @@ class ScreenshotTest {
         // Library restores from Store which reads SharedPreferences directly, so the
         // new instance sees the seeded data.
         env = Env(app)
+        // PlayerController.startService() binds the PlaybackService through a MediaController,
+        // which Robolectric's bindService crashes on (null ComponentName). Pretend it is connected.
+        PlayerController::class.java.getDeclaredField("controller").apply { isAccessible = true }
+            .set(app.player, com.google.common.util.concurrent.Futures.immediateCancelledFuture<Any>())
     }
 
     private fun start() {
@@ -155,8 +161,12 @@ class ScreenshotTest {
     }
 
     private fun settle(ms: Long = 1500) {
-        rule.mainClock.advanceTimeBy(ms)
-        rule.waitForIdle()
+        // Advance in steps: animations that start after a recomposition need
+        // more than one frame batch to finish under the manual clock.
+        repeat(4) {
+            rule.mainClock.advanceTimeBy(ms / 2)
+            rule.waitForIdle()
+        }
         rule.mainClock.advanceTimeBy(100)
     }
 
@@ -164,16 +174,24 @@ class ScreenshotTest {
         File(outDir, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
+    /** Draws a window's root view to a bitmap (captureToImage's forceRedraw hangs with Robolectric's paused looper). */
+    private fun grab(v: android.view.View): Bitmap {
+        val root = v.rootView
+        val bmp = Bitmap.createBitmap(root.width.coerceAtLeast(1), root.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+        root.draw(Canvas(bmp))
+        return bmp
+    }
+
     /** Saves the main window; popups (bottom sheets, dialogs) are composited on top. */
     private fun capture(name: String) {
-        val roots = rule.onAllNodes(isRoot())
-        val n = roots.fetchSemanticsNodes().size
-        val base = roots[0].captureToImage().asAndroidBitmap().copy(Bitmap.Config.ARGB_8888, true)
-        if (n > 1) {
+        val roots = rule.onAllNodes(isRoot()).fetchSemanticsNodes().map { (it.root as androidx.compose.ui.platform.ViewRootForTest).view }
+        var base = grab(roots[0])
+        if (roots.size > 1) {
+            base = base.copy(Bitmap.Config.ARGB_8888, true)
             val c = Canvas(base)
             c.drawColor(0x66000000)
-            for (i in 1 until n) {
-                val b = roots[i].captureToImage().asAndroidBitmap()
+            for (i in 1 until roots.size) {
+                val b = grab(roots[i])
                 c.drawBitmap(b, (base.width - b.width) / 2f, (base.height - b.height).toFloat(), Paint())
             }
         }
@@ -199,6 +217,12 @@ class ScreenshotTest {
     private fun page(key: String, content: @androidx.compose.runtime.Composable () -> Unit) {
         env.closeSheet(); env.nowPlayingOpen = false; env.nav.popToRoot()
         openPage(env, key, content)
+    }
+
+    @Test fun smoke() {
+        rule.setContent { androidx.compose.material3.Text("hello") }
+        rule.waitForIdle()
+        capture("00_smoke")
     }
 
     // ---- Screens ------------------------------------------------------------------------------

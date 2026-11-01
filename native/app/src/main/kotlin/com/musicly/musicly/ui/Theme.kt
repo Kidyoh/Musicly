@@ -10,6 +10,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -60,14 +62,19 @@ fun MusiclyTheme(dark: Boolean, content: @Composable () -> Unit) {
         surfaceContainerHigh = p.card, surfaceContainerHighest = p.card,
         outline = p.line, outlineVariant = p.line, error = Color(0xFFD64545),
     )
+    // Flutter's default text (Material 3 bodyMedium): 14sp, line height 1.43 x the
+    // font size, a little tracking. Compose defaults to 16sp/24sp, which is taller,
+    // so every style here is aligned with Flutter's metrics.
+    fun TextStyle.flutter() = copy(fontFamily = Inter, lineHeight = 1.43.em, letterSpacing = 0.25.sp)
     val base = Typography()
-    fun TextStyle.inter() = copy(fontFamily = Inter)
     val typography = Typography(
-        displayLarge = base.displayLarge.inter(), displayMedium = base.displayMedium.inter(), displaySmall = base.displaySmall.inter(),
-        headlineLarge = base.headlineLarge.inter(), headlineMedium = base.headlineMedium.inter(), headlineSmall = base.headlineSmall.inter(),
-        titleLarge = base.titleLarge.inter(), titleMedium = base.titleMedium.inter(), titleSmall = base.titleSmall.inter(),
-        bodyLarge = base.bodyLarge.inter(), bodyMedium = base.bodyMedium.inter(), bodySmall = base.bodySmall.inter(),
-        labelLarge = base.labelLarge.inter(), labelMedium = base.labelMedium.inter(), labelSmall = base.labelSmall.inter(),
+        displayLarge = base.displayLarge.flutter(), displayMedium = base.displayMedium.flutter(), displaySmall = base.displaySmall.flutter(),
+        headlineLarge = base.headlineLarge.flutter(), headlineMedium = base.headlineMedium.flutter(), headlineSmall = base.headlineSmall.flutter(),
+        titleLarge = base.titleLarge.flutter(), titleMedium = base.titleMedium.flutter(), titleSmall = base.titleSmall.flutter(),
+        // MaterialTheme makes bodyLarge the default style of every Text.
+        bodyLarge = base.bodyLarge.flutter().copy(fontSize = 14.sp),
+        bodyMedium = base.bodyMedium.flutter(), bodySmall = base.bodySmall.flutter(),
+        labelLarge = base.labelLarge.flutter(), labelMedium = base.labelMedium.flutter(), labelSmall = base.labelSmall.flutter(),
     )
     CompositionLocalProvider(LocalPalette provides p) {
         MaterialTheme(colorScheme = scheme, typography = typography, content = content)

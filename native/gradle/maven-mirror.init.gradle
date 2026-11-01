@@ -1,0 +1,7 @@
+beforeSettings { s ->
+  s.gradle.settingsEvaluated { st ->
+    st.dependencyResolutionManagement.repositories.configureEach { r ->
+      if (r instanceof MavenArtifactRepository && r.url.toString().contains("maven.apache.org")) r.url = uri("https://maven-central.storage-download.googleapis.com/maven2")
+    }
+  }
+}
