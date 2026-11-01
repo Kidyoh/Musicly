@@ -61,6 +61,7 @@ class HomeWidgets {
   static String _badge(Track t) => switch (t.source) {
     TrackSource.radio => '● LIVE',
     TrackSource.telegram => 'TELEGRAM',
+    TrackSource.feed => 'RSS',
     TrackSource.device || TrackSource.file => 'ON THIS PHONE',
   };
 

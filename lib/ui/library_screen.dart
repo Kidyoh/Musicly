@@ -8,6 +8,7 @@ import 'icons.dart';
 import 'nav.dart';
 import 'player_style_sheet.dart';
 import 'radio_screen.dart';
+import 'rss_screen.dart';
 import 'telegram_screen.dart';
 import 'routes.dart';
 import 'sheets.dart';
@@ -425,6 +426,14 @@ class LibraryScreen extends StatelessWidget {
               count(lib.recent.length, 'song'),
               () =>
                   openLive(context, 'Recently played', 'You', (l) => l.recent),
+            ),
+            tile(
+              square(AppIcons.broadcast),
+              'RSS feeds',
+              lib.feeds.isEmpty
+                  ? 'Stream songs from any RSS feed'
+                  : count(lib.feeds.length, 'feed'),
+              () => openPage(context, const RssScreen()),
             ),
             tile(
               square(AppIcons.disc),

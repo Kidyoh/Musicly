@@ -13,7 +13,9 @@ import '../models/track.dart';
 import '../services/telegram_backup.dart';
 import '../services/telegram_bot.dart';
 import '../services/device_library.dart';
+import '../models/rss_feed.dart';
 import '../services/radio_api.dart';
+import '../services/rss_api.dart';
 
 /// How the player looks: the colourful default, or a quiet, minimal one.
 enum PlayerStyle { classic, minimal }
@@ -34,6 +36,30 @@ class LibraryController extends ChangeNotifier {
 
   ThemeMode themeMode = ThemeMode.light;
   PlayerStyle playerStyle = PlayerStyle.classic;
+
+  // RSS feeds the user added; their songs stream from the feed's links.
+  final RssApi rss = RssApi();
+  final List<RssFeed> feeds = [];
+
+  /// Adds a feed by link. Throws an error with a readable message.
+  Future<RssFeed> addFeed(String input) async {
+    final res = await rss.load(input);
+    final i = feeds.indexWhere((f) => f.url == res.feed.url);
+    if (i >= 0) {
+      feeds[i] = res.feed;
+    } else {
+      feeds.add(res.feed);
+    }
+    _save();
+    notifyListeners();
+    return res.feed;
+  }
+
+  void removeFeed(RssFeed feed) {
+    feeds.removeWhere((f) => f.url == feed.url);
+    _save();
+    notifyListeners();
+  }
 
   final List<Track> favorites = [];
   final List<Track> recent = [];
@@ -251,15 +277,25 @@ class LibraryController extends ChangeNotifier {
       for (final t in pool)
         (pow(rng.nextDouble(), 1 / weight(t)).toDouble(), t),
     ]..sort((a, b) => b.$1.compareTo(a.$1));
-    // Avoid the same artist twice in a row where possible.
+    // Avoid the same artist twice in a row where possible. An artist who
+    // would otherwise be left with songs at the very end goes first.
     final mix = <Track>[];
     final rest = keyed.map((e) => e.$2).toList();
+    String key(Track t) => t.artist.toLowerCase();
     while (rest.isNotEmpty && mix.length < 40) {
-      final i = rest.indexWhere(
-        (t) =>
-            mix.isEmpty ||
-            t.artist.toLowerCase() != mix.last.artist.toLowerCase(),
+      final last = mix.isEmpty ? null : key(mix.last);
+      final counts = <String, int>{};
+      for (final t in rest) {
+        counts[key(t)] = (counts[key(t)] ?? 0) + 1;
+      }
+      final crowded = counts.entries
+          .where((e) => e.key != last && e.value * 2 > rest.length)
+          .map((e) => e.key)
+          .firstOrNull;
+      var i = rest.indexWhere(
+        (t) => crowded != null ? key(t) == crowded : key(t) != last,
       );
+      if (i < 0) i = rest.indexWhere((t) => key(t) != last);
       mix.add(rest.removeAt(i < 0 ? 0 : i));
     }
     forYou = mix;
@@ -1000,6 +1036,10 @@ class LibraryController extends ChangeNotifier {
       }
       await p.setString('theme', themeMode.name);
       await p.setString('playerStyle', playerStyle.name);
+      await p.setString(
+        'feeds',
+        jsonEncode(feeds.map((f) => f.toJson()).toList()),
+      );
     } catch (_) {}
     _scheduleBackup();
   }
@@ -1071,6 +1111,12 @@ class LibraryController extends ChangeNotifier {
       playerStyle =
           PlayerStyle.values.asNameMap()[p.getString('playerStyle')] ??
           PlayerStyle.classic;
+      feeds
+        ..clear()
+        ..addAll([
+          for (final e in (jsonDecode(p.getString('feeds') ?? '[]')) as List)
+            RssFeed.fromJson(e as Map<String, dynamic>),
+        ]);
       notifyListeners();
     } catch (_) {}
   }

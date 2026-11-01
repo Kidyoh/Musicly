@@ -1,7 +1,8 @@
 import 'dart:typed_data';
 
-/// radio: live stations · telegram: your channel · device/file: music on the phone.
-enum TrackSource { radio, telegram, device, file }
+/// radio: live stations · telegram: your channel · device/file: music on the
+/// phone · feed: songs streamed from an RSS feed.
+enum TrackSource { radio, telegram, device, file, feed }
 
 class Track {
   Track({
@@ -21,7 +22,7 @@ class Track {
     this.mime,
   });
 
-  /// `rb:` radio, `tg:` Telegram, `ms:` phone library, `file:` picked files.
+  /// `rb:` radio, `tg:` Telegram, `rss:` RSS feed, `ms:` phone library, `file:` picked files.
   final String id;
   final String title;
   final String artist;

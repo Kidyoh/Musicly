@@ -303,6 +303,7 @@ class PlayerController extends ChangeNotifier {
         final (key, resolve) = _telegramLink(t);
         return _LazySource(key, resolve, tag: tag);
       case TrackSource.radio:
+      case TrackSource.feed:
       case TrackSource.device:
         return AudioSource.uri(Uri.parse(t.uri!), tag: tag);
       case TrackSource.file:
