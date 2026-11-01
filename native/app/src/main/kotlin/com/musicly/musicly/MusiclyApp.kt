@@ -24,6 +24,7 @@ class MusiclyApp : Application() {
     lateinit var device: Device
     lateinit var library: Library
     lateinit var lyrics: LyricsController
+    lateinit var jam: com.musicly.musicly.jam.JamController
 
     override fun onCreate() {
         super.onCreate()
@@ -34,6 +35,7 @@ class MusiclyApp : Application() {
         createPlayerChannel()
         library = Library(store, device)
         lyrics = LyricsController(player, store)
+        jam = com.musicly.musicly.jam.JamController(library, player, store, device, cacheDir)
         player.onTrackStarted = library::recordPlay
         player.localCopy = library::downloadedCopy
         library.onRestored = player::restoreSettings

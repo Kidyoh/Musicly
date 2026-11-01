@@ -59,6 +59,7 @@ class Env(val app: MusiclyApp) {
     val player: PlayerController get() = app.player
     val lyrics: LyricsController get() = app.lyrics
     val device: Device get() = app.device
+    val jam: com.musicly.musicly.jam.JamController get() = app.jam
     val nav = Nav()
 
     /** Full-screen Now Playing on top of everything. */
