@@ -32,7 +32,7 @@ object TelegramLinks {
     suspend fun url(fileId: String): String {
         val hit = cache[fileId]
         if (hit != null && hit.expires > System.currentTimeMillis() + 45_000) return hit.url
-        val bot = TelegramFiles.bot ?: throw IllegalStateException("Telegram is not connected")
+        val bot = TelegramFiles.bot ?: throw java.io.IOException("Telegram is not connected")
         val url = bot.fileUrl(fileId)
         cache[fileId] = Entry(url, System.currentTimeMillis() + 50 * 60_000)
         return url
@@ -62,7 +62,7 @@ class AudioEngine(context: Context) {
         val factory = ResolvingDataSource.Factory(upstream) { spec: DataSpec ->
             if (spec.uri.scheme == "tg") {
                 val id = spec.uri.schemeSpecificPart.removePrefix("//")
-                spec.withUri(Uri.parse(runBlocking { TelegramLinks.url(id) }))
+                spec.withUri(Uri.parse(try { runBlocking { TelegramLinks.url(id) } } catch (e: java.io.IOException) { throw e } catch (e: Exception) { throw java.io.IOException(e.message ?: "Telegram link failed", e) }))
             } else {
                 spec
             }

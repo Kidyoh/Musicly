@@ -592,24 +592,29 @@ class Library(private val store: Store, private val device: Device) {
         backupJob?.cancel()
         backupJob = scope.launch {
             delay(20_000)
-            backupNow()
+            backupNow(fromTimer = true)
         }
     }
 
     /** Called when the app goes to the background: save pending changes now. */
     fun flushBackup() {
-        saveNow()
-        if (backupJob?.isActive == true) scope.launch { backupNow() }
+        val pending = backupJob?.isActive == true
+        writeAll()
+        if (pending) {
+            backupJob?.cancel()
+            scope.launch { backupNow(fromTimer = true) }
+        }
     }
 
     /** Saves the library to Download/Musicly on the phone, and to the pinned backup in the bot chat. */
-    suspend fun backupNow(): Boolean {
+    suspend fun backupNow(fromTimer: Boolean = false): Boolean {
         if (backingUp) return false
-        backupJob?.cancel()
+        // The timer's own job must not cancel itself, and backing up never re-schedules a backup.
+        if (!fromTimer) backupJob?.cancel()
         backingUp = true
         var ok = false
         try {
-            saveNow()
+            writeAll()
             val snap = TelegramBackup.snapshot(store)
             if (device.saveBackupFile(snap.toString())) {
                 lastLocalBackup = java.time.Instant.now().toString()
@@ -896,6 +901,12 @@ class Library(private val store: Store, private val device: Device) {
     }
 
     fun saveNow() {
+        writeAll()
+        scheduleBackup()
+    }
+
+    /** Writes everything to storage right now, without scheduling a backup. */
+    private fun writeAll() {
         saveJob?.cancel()
         try {
             store.put("files", files.toJson().toString())
@@ -926,7 +937,6 @@ class Library(private val store: Store, private val device: Device) {
             store.put("feeds", JsonArray(feeds.map { it.toJson() }).toString())
         } catch (_: Exception) {
         }
-        scheduleBackup()
     }
 
     private fun restore() {

@@ -34,7 +34,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
 import java.security.MessageDigest
-import java.util.Base64
+import android.util.Base64
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -362,8 +362,9 @@ class JamHost(
             return false
         }
         val name = (req.query["name"] ?: "Guest").trim()
-        val accept = Base64.getEncoder().encodeToString(
+        val accept = Base64.encodeToString(
             MessageDigest.getInstance("SHA-1").digest((key + WS_GUID).toByteArray(Charsets.ISO_8859_1)),
+            Base64.NO_WRAP,
         )
         out.write(
             ("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +

@@ -32,7 +32,7 @@ class PlaybackService : MediaSessionService() {
             DefaultMediaNotificationProvider.Builder(this)
                 .setChannelId(CHANNEL_ID)
                 .setChannelName(com.musicly.musicly.R.string.player_channel)
-                .build(),
+                .build().apply { setSmallIcon(com.musicly.musicly.R.drawable.ic_stat_musicly) },
         )
     }
 

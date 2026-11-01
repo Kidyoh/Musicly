@@ -30,7 +30,7 @@ class MusiclyApp : Application() {
         super.onCreate()
         store = Store(this)
         audio = AudioEngine(this)
-        player = PlayerController(audio, store)
+        player = PlayerController(this, audio, store)
         device = Device(this)
         createPlayerChannel()
         library = Library(store, device)

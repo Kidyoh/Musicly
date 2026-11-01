@@ -7,6 +7,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.Response
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -27,14 +28,31 @@ object Http {
 
     class HttpError(val code: Int, message: String) : IOException(message)
 
-    suspend fun Call.await(): Response = suspendCancellableCoroutine { cont ->
+    /**
+     * Runs the call and returns its response. By default the body is read right
+     * away on OkHttp's own thread: callers often run on the main thread, where
+     * reading a socket is not allowed. Pass [buffer] = false to stream big downloads
+     * (only from background threads).
+     */
+    suspend fun Call.await(buffer: Boolean = true): Response = suspendCancellableCoroutine { cont ->
         enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 if (!cont.isCancelled) cont.resumeWithException(e)
             }
 
             override fun onResponse(call: Call, response: Response) {
-                cont.resume(response)
+                if (!buffer) {
+                    cont.resume(response)
+                    return
+                }
+                try {
+                    val body = response.body
+                    val bytes = body.bytes()
+                    cont.resume(response.newBuilder().body(bytes.toResponseBody(body.contentType())).build())
+                } catch (e: IOException) {
+                    response.close()
+                    if (!cont.isCancelled) cont.resumeWithException(e)
+                }
             }
         })
         cont.invokeOnCancellation { cancel() }

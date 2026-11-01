@@ -116,7 +116,7 @@ class JamController(
         onAdd = { id, by, next -> withContext(Dispatchers.Main) { guestAdded(id, by, next) } },
         onUpload = { song, by, next -> withContext(Dispatchers.Main) { guestUploaded(song, by, next) } },
         onControl = { action, ms, by -> scope.launch { guestControl(action, ms, by) } },
-        search = { q -> search(q) },
+        search = { q -> onMain { search(q) } },
         art = { id -> artFor(id) },
     )
 
@@ -740,7 +740,7 @@ class JamController(
         client.newCall(req).execute().use { res ->
             if (res.code != 200) throw JamError("HTTP ${res.code}")
             file.outputStream().use { out -> res.body.byteStream().copyTo(out) }
-            val head = file.inputStream().use { it.readNBytes(64) }
+            val head = file.inputStream().use { ins -> ByteArray(64).let { b -> b.copyOf(maxOf(0, ins.read(b))) } }
             if (FileDrop.looksLikePage(head, res.header("content-type"))) {
                 throw JamError("the link gives a web page, not the song")
             }

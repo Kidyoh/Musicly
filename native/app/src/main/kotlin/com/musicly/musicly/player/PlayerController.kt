@@ -58,7 +58,7 @@ data class EqBand(val centerHz: Double, val minDb: Double, val maxDb: Double)
  * timer, equalizer, volume fade and recovery from failed songs.
  */
 @UnstableApi
-class PlayerController(private val engine: AudioEngine, private val store: Store) {
+class PlayerController(private val context: android.content.Context, private val engine: AudioEngine, private val store: Store) {
     val player: ExoPlayer = engine.player
     private val scope = CoroutineScope(Dispatchers.Main.immediate)
     private val handler = Handler(Looper.getMainLooper())
@@ -268,9 +268,21 @@ class PlayerController(private val engine: AudioEngine, private val store: Store
         }
     }
 
+    private var controller: com.google.common.util.concurrent.ListenableFuture<androidx.media3.session.MediaController>? = null
+
+    /**
+     * Connects to the playback service. That starts it, so the notification,
+     * lock-screen player and background playback work.
+     */
     private fun startService() {
-        // MediaSessionService starts itself when a MediaSession's player plays;
-        // nothing else is needed. Kept as a hook for clarity.
+        if (controller != null) return
+        try {
+            val token = androidx.media3.session.SessionToken(
+                context, android.content.ComponentName(context, PlaybackService::class.java),
+            )
+            controller = androidx.media3.session.MediaController.Builder(context, token).buildAsync()
+        } catch (_: Exception) {
+        }
     }
 
     fun togglePlay() {
@@ -415,15 +427,18 @@ class PlayerController(private val engine: AudioEngine, private val store: Store
                 delay(durationMs)
                 sleepEndsAt = null
                 sleepFading = true
-                var v = player.volume
-                while (v > 0) {
-                    player.volume = v.coerceIn(0f, 1f)
-                    delay(300)
-                    v -= 0.08f
+                try {
+                    var v = player.volume
+                    while (v > 0) {
+                        player.volume = v.coerceIn(0f, 1f)
+                        delay(300)
+                        v -= 0.08f
+                    }
+                    player.pause()
+                } finally {
+                    player.volume = 1f
+                    sleepFading = false
                 }
-                player.pause()
-                player.volume = 1f
-                sleepFading = false
             }
         }
     }

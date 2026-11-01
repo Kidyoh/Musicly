@@ -66,6 +66,14 @@ class MainActivity : ComponentActivity() {
         return d.await()
     }
 
+    override fun onDestroy() {
+        // The app (music, Jam, sync) outlives this screen: don't keep pointing at it.
+        val app = application as MusiclyApp
+        app.library.requestMusicPermission = null
+        app.player.requestNotifications = null
+        super.onDestroy()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -73,13 +81,13 @@ class MainActivity : ComponentActivity() {
         val env = Env(app)
         val lib = app.library
         lib.requestMusicPermission = {
-            if (app.device.hasPermission()) true else ask(app.device.neededPermissions)
+            if (app.device.hasPermission()) true else try { ask(app.device.neededPermissions) } catch (_: Exception) { false }
         }
         app.player.requestNotifications = {
             app.device.notificationPermission?.let { p ->
                 if (!app.device.hasNotificationPermission()) {
                     // Asked once, without waiting for the answer.
-                    permissions.launch(arrayOf(p))
+                    try { permissions.launch(arrayOf(p)) } catch (_: Exception) { }
                 }
             }
         }

@@ -338,7 +338,7 @@ class Device(context: Context) {
     private suspend fun download(url: String, out: OutputStream) {
         val client = Http.client.newBuilder()
             .connectTimeout(20, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
-        client.newCall(Request.Builder().url(url).build()).await().use { res ->
+        client.newCall(Request.Builder().url(url).build()).await(buffer = false).use { res ->
             if (!res.isSuccessful) throw IllegalStateException("HTTP ${res.code}")
             res.body.byteStream().use { it.copyTo(out, 64 * 1024) }
         }
