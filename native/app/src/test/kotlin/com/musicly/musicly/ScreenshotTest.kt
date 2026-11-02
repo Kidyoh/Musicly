@@ -31,6 +31,7 @@ import com.musicly.musicly.ui.LocalEnv
 import com.musicly.musicly.ui.MusiclyTheme
 import com.musicly.musicly.ui.RadioScreen
 import com.musicly.musicly.ui.RssScreen
+import com.musicly.musicly.ui.CatalogScreen
 import com.musicly.musicly.ui.Shell
 import com.musicly.musicly.ui.ShellTabs
 import com.musicly.musicly.ui.ArtistScreen
@@ -241,6 +242,14 @@ class ScreenshotTest {
     }
     @Test fun artist() { start(); both("08_artist") { page("artist:The Weeknd") { ArtistScreen("The Weeknd") } } }
     @Test fun rss() { start(); both("09_rss") { page("rss") { RssScreen() } } }
+    @Test fun rssCatalog() { start(); both("09b_rss_suggested") { page("rss-catalog") { CatalogScreen() } } }
+    @Test fun rssEmpty() {
+        start()
+        both("09d_rss_empty") {
+            env.library.feeds.toList().forEach { env.library.removeFeed(it) }
+            page("rss-empty") { RssScreen() }
+        }
+    }
     @Test fun jam() { start(); both("10_jam") { page("jam") { JamScreen() } } }
 
     private fun play(t: List<Track> = channelTracks, i: Int = 0) {

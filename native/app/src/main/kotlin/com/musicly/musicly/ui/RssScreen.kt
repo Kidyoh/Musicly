@@ -234,7 +234,7 @@ private fun showAddFeedDialog(env: Env) {
 
 /** Ready-made feeds to pick from; tap Add to keep one. */
 @Composable
-private fun CatalogScreen() {
+internal fun CatalogScreen() {
     val env = LocalEnv.current
     val lib = env.library.observe()
     val p = palette()
