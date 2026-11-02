@@ -18,3 +18,17 @@ val rssCatalog = listOf(
     RssSuggestion("Old records", "78 rpm records", "Songs digitised from old shellac records", "https://archive.org/services/collection-rss.php?collection=78rpm"),
     RssSuggestion("Old records", "Great 78 Project", "More digitised 78s from the George Blood collection", "https://archive.org/services/collection-rss.php?collection=georgeblood"),
 )
+
+/**
+ * The built-in feeds plus any OPML file bundled with the app in
+ * assets/default_feeds.opml (feeds added at build time).
+ */
+fun rssCatalog(context: android.content.Context): List<RssSuggestion> {
+    val bundled = try {
+        context.assets.open("default_feeds.opml").use { Opml.parse(it.readBytes().decodeToString()) }
+            .map { it.copy(title = it.title.removeSuffix(" on +251.radio"), note = "Radio host on +251.radio") }
+    } catch (_: Exception) {
+        emptyList()
+    }
+    return bundled + rssCatalog
+}

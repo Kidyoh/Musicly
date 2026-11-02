@@ -21,8 +21,8 @@ android {
         minSdk = 24
         targetSdk = 35
         // Keep above the Flutter releases (3001) so it installs over them.
-        versionCode = 4000
-        versionName = "2.0.0"
+        versionCode = 4001
+        versionName = "2.0.0-preview2"
     }
 
     signingConfigs {

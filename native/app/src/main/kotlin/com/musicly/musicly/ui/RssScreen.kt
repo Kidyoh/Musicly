@@ -240,7 +240,8 @@ private fun CatalogScreen() {
     val p = palette()
     val scope = rememberCoroutineScope()
     val busy = remember { mutableStateListOf<String>() }
-    val groups = rssCatalog.groupBy { it.group }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val groups = remember { rssCatalog(ctx).groupBy { it.group } }
 
     fun add(s: RssSuggestion) {
         busy.add(s.url)
@@ -257,15 +258,39 @@ private fun CatalogScreen() {
         }
     }
 
+    fun addAll(list: List<RssSuggestion>) {
+        scope.launch {
+            var added = 0
+            for (s in list) {
+                busy.add(s.url)
+                try {
+                    lib.addFeed(s.url)
+                    added++
+                } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                }
+                busy.remove(s.url)
+            }
+            env.toast(if (added == list.size) "Added $added feeds" else "Added $added of ${list.size} feeds")
+        }
+    }
+
     Column(Modifier.fillMaxSize().background(p.bg)) {
         PageBar(onBack = { env.nav.pop() }, center = "Suggested feeds")
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             for ((group, list) in groups) {
                 item(key = "g:$group") {
-                    Text(
-                        group, Modifier.fillMaxWidth().padding(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 6.dp),
-                        color = p.ink, fontSize = 18.sp, fontWeight = FontWeight.Bold,
-                    )
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(group, Modifier.weight(1f), color = p.ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        val missing = list.filter { s -> lib.feeds.none { it.url == s.url } }
+                        if (list.size > 3 && missing.isNotEmpty() && busy.isEmpty()) {
+                            PillAction("Add all", { addAll(missing) }, minWidth = 80.dp, minHeight = 38.dp)
+                        }
+                    }
                 }
                 items(list.size, key = { "s:${list[it].url}" }) { i ->
                     val s = list[i]
@@ -279,8 +304,10 @@ private fun CatalogScreen() {
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
                             Text(s.title, color = p.ink, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                            Spacer(Modifier.height(2.dp))
-                            Text(s.note, color = p.sub, fontSize = 13.sp)
+                            if (s.note.isNotEmpty()) {
+                                Spacer(Modifier.height(2.dp))
+                                Text(s.note, color = p.sub, fontSize = 13.sp)
+                            }
                         }
                         Spacer(Modifier.width(10.dp))
                         if (lib.feeds.any { it.url == s.url }) {

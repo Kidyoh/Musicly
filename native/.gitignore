@@ -4,3 +4,4 @@ app/build/
 local.properties
 *.iml
 *.apk
+app/src/main/assets/default_feeds.opml
