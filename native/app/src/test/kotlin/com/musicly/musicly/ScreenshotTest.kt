@@ -37,6 +37,12 @@ import com.musicly.musicly.ui.ShellTabs
 import com.musicly.musicly.ui.ArtistScreen
 import com.musicly.musicly.ui.CollectionScreen
 import com.musicly.musicly.ui.TelegramScreen
+import com.musicly.musicly.ui.TgChatsScreen
+import com.musicly.musicly.ui.TgLoginScreen
+import com.musicly.musicly.tg.TgAuth
+import com.musicly.musicly.tg.TgFake
+import com.musicly.musicly.tg.TgUserState
+import com.musicly.musicly.data.TelegramChannel
 import com.musicly.musicly.ui.openPage
 import com.musicly.musicly.ui.showPlayerStyle
 import com.musicly.musicly.ui.showTrackOptions
@@ -290,5 +296,54 @@ class ScreenshotTest {
     @Test fun radioNowPlaying() {
         start(); play(listOf(radio))
         both("16_nowplaying_radio") { env.openNowPlaying() }
+    }
+
+    // ---- Telegram account (TgFake stands in for TDLib) ---------------------------------------------
+
+    private fun tgFake(auth: TgAuth, keyed: Boolean = true): TgFake {
+        val fake = TgFake(auth)
+        val user = app.library.tgUser
+        user.attach { fake }
+        if (keyed) user.saveKey(123456, "0123456789abcdef0123456789abcdef")
+        return fake
+    }
+
+    private fun tgLogin(name: String, auth: TgAuth, keyed: Boolean = true) {
+        tgFake(auth, keyed)
+        start()
+        both(name) { page("tg-login") { TgLoginScreen() } }
+    }
+
+    @Test fun tgLoginKey() = tgLogin("tg_login_key", TgAuth.Off, keyed = false)
+    @Test fun tgLoginPhone() = tgLogin("tg_login_phone", TgAuth.WaitPhone())
+    @Test fun tgLoginCode() = tgLogin("tg_login_code", TgAuth.WaitCode("+251911234567", "Telegram app", 5, resendInSec = 24))
+    @Test fun tgLoginCodeError() = tgLogin("tg_login_code_error", TgAuth.WaitCode("+251911234567", "SMS", 5, resendInSec = 0, error = "That code isn't right. Check it and try again."))
+    @Test fun tgLoginPassword() = tgLogin("tg_login_password", TgAuth.WaitPassword("your first pet"))
+    @Test fun tgLoginFailed() = tgLogin("tg_login_failed", TgAuth.Failed("Telegram says the app key isn't valid. Check api_id and api_hash on my.telegram.org."))
+
+    private fun tgPicked() {
+        val fake = tgFake(TgAuth.Ready("Mia Tesfaye", "+251911234567"))
+        val user = app.library.tgUser
+        val c1 = TgFake.chats[0]
+        user.chats += TelegramChannel(c1.id, c1.title, TgFake.songsOf(c1.id, 120).map { TgUserState.trackOf(it, c1.title) }.toMutableList(), 5000)
+        val c2 = TgFake.chats[2]
+        user.chats += TelegramChannel(c2.id, c2.title, TgFake.songsOf(c2.id, 300).map { TgUserState.trackOf(it, c2.title) }.toMutableList(), 5000)
+        user.setPicked(TgFake.chats[1], true) // read now
+        user.setPicked(TgFake.chats[4], true) // waiting
+    }
+
+    @Test fun tgChats() {
+        tgPicked()
+        start()
+        both("tg_chats") { page("tg-chats") { TgChatsScreen() } }
+    }
+
+    @Test fun tgLibraryTile() {
+        app.store.put("tg_ready", true)
+        app.store.put("tg_name", "Mia Tesfaye")
+        app.library.tgUser.load()
+        tgPicked()
+        start()
+        both("tg_library_tile") { openTab(2) }
     }
 }

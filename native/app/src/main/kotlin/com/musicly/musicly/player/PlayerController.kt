@@ -197,7 +197,7 @@ class PlayerController(private val context: android.content.Context, private val
 
     private fun prefetchNext() {
         val next = queue.getOrNull(player.nextMediaItemIndex.takeIf { it >= 0 } ?: return) ?: return
-        if (next.source == TrackSource.telegram && localCopy?.invoke(next) == null) {
+        if (next.source == TrackSource.telegram && !next.id.startsWith("tu:") && localCopy?.invoke(next) == null) {
             scope.launch(Dispatchers.IO) { TelegramLinks.warm(next.uri!!) }
         }
     }
@@ -379,7 +379,7 @@ class PlayerController(private val context: android.content.Context, private val
      */
     private fun recover() {
         val t = current ?: return
-        if (t.source == TrackSource.telegram) TelegramLinks.forget(t.uri!!)
+        if (t.source == TrackSource.telegram && !t.id.startsWith("tu:")) TelegramLinks.forget(t.uri!!)
         retries++
         scope.launch {
             delay(600L * retries)

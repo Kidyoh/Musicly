@@ -105,13 +105,20 @@ class TelegramBackup(val bot: TelegramBot, val chatId: Long) {
         private val metaKeys = setOf("backup_msg", "backup_at")
 
         /**
+         * Keys that never leave the phone: the user's own Telegram app key
+         * (tg_api_id, tg_api_hash) and anything about their login (tg_*).
+         */
+        fun isPrivateKey(k: String) = k.startsWith("tg_")
+
+        /**
          * Everything in the app's preferences, minus the bot token (the user types
-         * it in again when reconnecting) and backup bookkeeping.
+         * it in again when reconnecting), the Telegram account key and session
+         * (tg_*) and backup bookkeeping.
          */
         fun snapshot(store: Store): JsonObject {
             val data = LinkedHashMap<String, JsonElement>()
             for ((k, v) in store.dump()) {
-                if (k in metaKeys || v == null) continue
+                if (k in metaKeys || v == null || isPrivateKey(k)) continue
                 if (k == "telegram" && v is String) {
                     val j = try {
                         parseJson(v).obj() ?: continue
@@ -140,7 +147,7 @@ class TelegramBackup(val bot: TelegramBot, val chatId: Long) {
             val values = LinkedHashMap<String, Any?>()
             for ((k, v) in prefs) {
                 // Saved-song links are rebuilt from the files on the phone instead.
-                if (k == "telegram" || k == "downloads") continue
+                if (k == "telegram" || k == "downloads" || isPrivateKey(k)) continue
                 val p = v as? JsonPrimitive ?: continue
                 if (p is JsonNull) continue
                 when {

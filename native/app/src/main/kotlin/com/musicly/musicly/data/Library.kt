@@ -11,6 +11,7 @@ import com.musicly.musicly.net.TelegramBackup
 import com.musicly.musicly.net.TelegramBot
 import com.musicly.musicly.net.TelegramError
 import com.musicly.musicly.net.TelegramFiles
+import com.musicly.musicly.tg.TgUserState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -97,8 +98,16 @@ class Library(private val store: Store, private val device: Device) {
         private set
     private var cancelImport = false
     private var syncJob: Job? = null
-    val channelConnected get() = bot != null && channels.isNotEmpty()
+    /** The Telegram bot is set up and has at least one channel. */
+    val botConnected get() = bot != null && channels.isNotEmpty()
+
+    /** Any Telegram source: a bot channel, or chats picked from the user's own account. */
+    val channelConnected get() = botConnected || tgChats.isNotEmpty()
     val canImport get() = userChatId != null
+
+    // Channels and groups of the user's own Telegram account (TDLib), stored like bot channels.
+    val tgUser = TgUserState(store, scope, { rebuild -> channelsChanged(); if (rebuild) buildForYou(); changed() }, { save() })
+    val tgChats: MutableList<TelegramChannel> get() = tgUser.chats
 
     /** Every song from every channel (plus ones sent to the bot), each once. */
     val channelTracks: List<Track>
@@ -107,14 +116,15 @@ class Library(private val store: Store, private val device: Device) {
             val out = mutableListOf<Track>()
             for (c in channels) for (t in c.tracks) if (seen.add(t.id)) out += t
             for (t in forwarded) if (seen.add(t.id)) out += t
+            for (c in tgChats) for (t in c.tracks) if (seen.add(t.id)) out += t
             channelTracksCache = out
             out
         }
 
     val channelName: String?
         get() = when {
-            channels.isEmpty() -> null
-            channels.size == 1 -> channels.first().name
+            channels.isEmpty() && tgChats.isEmpty() -> null
+            channels.size + tgChats.size == 1 -> (channels.firstOrNull() ?: tgChats.first()).name
             else -> "Your channels"
         }
 
@@ -176,7 +186,7 @@ class Library(private val store: Store, private val device: Device) {
         restore()
         scope.launch {
             loadHome()
-            if (channelConnected) startSync()
+            if (botConnected) startSync()
             if (deviceScanEnabled) scanDevice(askPermission = false)
         }
     }
@@ -732,8 +742,10 @@ class Library(private val store: Store, private val device: Device) {
 
     // ---- Saving channel songs to the phone -----------------------------------------
 
-    val canDownload get() = device.supported && channelConnected
-    val notDownloaded get() = channelTracks.count { !downloads.containsKey(it.id) }
+    val canDownload get() = device.supported && botConnected
+
+    /** Songs from your own account (tu:) are streamed, never saved through the Bot API. */
+    val notDownloaded get() = channelTracks.count { !it.id.startsWith("tu:") && !downloads.containsKey(it.id) }
 
     /** "Artist - Title.mp3", safe for every file system. */
     private fun fileName(t: Track): String {
@@ -760,7 +772,7 @@ class Library(private val store: Store, private val device: Device) {
     suspend fun downloadSongs(tracks: List<Track>) {
         val b = bot
         if (!canDownload || b == null) return
-        val todo = tracks.filter { it.source == TrackSource.telegram && !downloads.containsKey(it.id) }.toMutableList()
+        val todo = tracks.filter { it.source == TrackSource.telegram && it.id.startsWith("tg:") && !downloads.containsKey(it.id) }.toMutableList()
         if (todo.isEmpty()) return
         if (downloading) {
             pendingDownloads += todo
@@ -932,6 +944,7 @@ class Library(private val store: Store, private val device: Device) {
                     ).toString(),
                 )
             }
+            tgUser.persist()
             store.put("theme", theme.name)
             store.put("playerStyle", playerStyle.name)
             store.put("feeds", JsonArray(feeds.map { it.toJson() }).toString())
@@ -973,6 +986,7 @@ class Library(private val store: Store, private val device: Device) {
                 }
                 channelsChanged()
             }
+            tgUser.load()
             theme = if (store.string("theme") == "dark") ThemeChoice.dark else ThemeChoice.light
             playerStyle = PlayerStyle.entries.firstOrNull { it.name == store.string("playerStyle") } ?: PlayerStyle.classic
             feeds.clear()

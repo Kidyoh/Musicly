@@ -270,12 +270,20 @@ fun LibraryScreen() {
             item {
                 Tile(
                     { Square(AppIcons.telegram) },
-                    if (lib.channelConnected) (lib.channelName ?: "Telegram") else "Your Telegram channel",
-                    if (lib.channelConnected) {
+                    if (lib.botConnected) (lib.channelName ?: "Telegram") else "Your Telegram channel",
+                    if (lib.botConnected) {
                         if (lib.channels.size > 1) "${count(lib.channels.size, "channel")} • ${count(lib.channelTracks.size, "song")}"
                         else "${count(lib.channelTracks.size, "song")} • full length"
                     } else "Stream songs from your own channel",
                 ) { openPage(env, "telegram") { TelegramScreen() } }
+            }
+            item {
+                val u = lib.tgUser
+                Tile(
+                    { Square(AppIcons.telegramOn, dark = u.loggedIn) },
+                    "Telegram account",
+                    if (u.loggedIn) "Logged in as ${u.accountName ?: "you"} \u00b7 ${count(lib.tgChats.size, "channel")}" else "Not logged in",
+                ) { openTgAccount(env) }
             }
             if (lib.channels.size > 1) {
                 items(lib.channels.toList()) { ch ->

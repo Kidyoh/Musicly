@@ -335,7 +335,7 @@ fun showTrackOptions(env: Env, t: Track, onRemove: (() -> Unit)? = null, removeL
                     openAlbumOf(env, t)
                 })
             }
-            if (t.source == TrackSource.telegram && !lib.isDownloaded(t) && lib.canDownload) {
+            if (t.source == TrackSource.telegram && t.id.startsWith("tg:") && !lib.isDownloaded(t) && lib.canDownload) {
                 SheetTile("Save to this phone", icon = AppIcons.download, onClick = {
                     dismiss()
                     sheetScope.launch { lib.downloadSongs(listOf(t)) }

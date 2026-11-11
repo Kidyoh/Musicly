@@ -87,7 +87,7 @@ private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immedia
 fun TelegramScreen(channelId: Long? = null) {
     val env = LocalEnv.current
     val lib = env.library.observe()
-    if (!lib.channelConnected) {
+    if (!lib.botConnected) {
         ConnectView(adding = false)
         return
     }
@@ -403,6 +403,14 @@ private fun showChannelMenu(env: Env, channelId: Long?) {
                     },
                 )
             }
+            SheetTile(
+                "Log in with your Telegram account", icon = AppIcons.telegramOn,
+                sub = if (lib.tgUser.loggedIn) "Logged in as ${lib.tgUser.accountName ?: "you"}" else "Play songs from every channel and group you're in",
+                onClick = {
+                    dismiss()
+                    openTgAccount(env)
+                },
+            )
             SheetTile(
                 if (lib.channels.size > 1) "Disconnect all channels" else "Disconnect channel",
                 icon = AppIcons.close,

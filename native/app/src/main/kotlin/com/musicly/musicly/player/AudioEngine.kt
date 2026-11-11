@@ -7,6 +7,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.ResolvingDataSource
@@ -16,7 +17,10 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.musicly.musicly.data.Track
 import com.musicly.musicly.data.TrackSource
 import com.musicly.musicly.net.Http
+import com.musicly.musicly.MusiclyApp
 import com.musicly.musicly.net.TelegramFiles
+import com.musicly.musicly.tg.SchemeRoutingDataSource
+import com.musicly.musicly.tg.TdDataSource
 import kotlinx.coroutines.runBlocking
 import java.util.concurrent.ConcurrentHashMap
 
@@ -58,7 +62,12 @@ class AudioEngine(context: Context) {
     val player: ExoPlayer
 
     init {
-        val upstream = DefaultDataSource.Factory(context, OkHttpDataSource.Factory(Http.client))
+        val web = DefaultDataSource.Factory(context, OkHttpDataSource.Factory(Http.client))
+        // td://<chat>/<message> songs come from the user's own Telegram account (TDLib). The backend is
+        // only touched when such a song is opened, so TDLib's native library loads only for people who log in.
+        val app = context.applicationContext
+        val td = TdDataSource.Factory { chatId, messageId -> (app as MusiclyApp).tg.openAudio(chatId, messageId) }
+        val upstream = DataSource.Factory { SchemeRoutingDataSource(web.createDataSource(), td.createDataSource()) }
         val factory = ResolvingDataSource.Factory(upstream) { spec: DataSpec ->
             if (spec.uri.scheme == "tg") {
                 val id = spec.uri.schemeSpecificPart.removePrefix("//")
@@ -86,7 +95,7 @@ class AudioEngine(context: Context) {
         fun mediaItem(t: Track, art: Track? = null): MediaItem {
             val src = art ?: t
             val uri = when (t.source) {
-                TrackSource.telegram -> "tg://${t.uri}"
+                TrackSource.telegram -> if (t.uri?.startsWith("td://") == true) t.uri else "tg://${t.uri}"
                 TrackSource.file -> t.uri!!.let { if (it.startsWith("/")) Uri.fromFile(java.io.File(it)).toString() else it }
                 else -> t.uri!!
             }

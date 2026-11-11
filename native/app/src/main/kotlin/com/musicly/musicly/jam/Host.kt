@@ -34,7 +34,6 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
 import java.security.MessageDigest
-import android.util.Base64
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -362,9 +361,8 @@ class JamHost(
             return false
         }
         val name = (req.query["name"] ?: "Guest").trim()
-        val accept = Base64.encodeToString(
+        val accept = base64(
             MessageDigest.getInstance("SHA-1").digest((key + WS_GUID).toByteArray(Charsets.ISO_8859_1)),
-            Base64.NO_WRAP,
         )
         out.write(
             ("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
@@ -709,4 +707,22 @@ internal class WsConn(
     private companion object {
         const val MAX_MESSAGE = 1L shl 20
     }
+}
+
+/** Standard Base64 without line breaks. (java.util.Base64 needs Android 8; android.util.Base64 is missing in JVM tests.) */
+internal fun base64(data: ByteArray): String {
+    val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    val sb = StringBuilder((data.size + 2) / 3 * 4)
+    var i = 0
+    while (i < data.size) {
+        val b0 = data[i].toInt() and 0xff
+        val b1 = if (i + 1 < data.size) data[i + 1].toInt() and 0xff else 0
+        val b2 = if (i + 2 < data.size) data[i + 2].toInt() and 0xff else 0
+        sb.append(chars[b0 shr 2])
+        sb.append(chars[((b0 and 3) shl 4) or (b1 shr 4)])
+        sb.append(if (i + 1 < data.size) chars[((b1 and 15) shl 2) or (b2 shr 6)] else '=')
+        sb.append(if (i + 2 < data.size) chars[b2 and 63] else '=')
+        i += 3
+    }
+    return sb.toString()
 }

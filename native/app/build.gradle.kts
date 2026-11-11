@@ -51,6 +51,10 @@ android {
         }
     }
 
+    // TDLib's .so files are ~37 MB for the two ABIs. Stored compressed in the APK they download as ~15 MB
+    // (they are extracted at install instead of mapped from the APK).
+    packaging { jniLibs { useLegacyPackaging = true } }
+
     buildFeatures { compose = true }
 
     testOptions { unitTests { isReturnDefaultValues = true; isIncludeAndroidResources = true } }
@@ -93,7 +97,10 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:5.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
-    implementation("io.github.tdlibx:td-ktx-android:1.8.56-RC10")
+    // TDLib: JNI part + libtdjson.so for arm64-v8a / armeabi-v7a. The td-ktx wrapper is not used: its
+    // consumer rules keep its 55k-line generated API (about 10 MB of dex) and it println()s the
+    // login request (api hash) in setTdlibParameters. TdJsonClient is a 60-line replacement.
+    implementation("io.github.tdlibx:td-android:1.8.56-RC9")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     testImplementation("org.robolectric:robolectric:4.17")

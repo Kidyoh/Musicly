@@ -26,6 +26,9 @@ class MusiclyApp : Application() {
     lateinit var lyrics: LyricsController
     lateinit var jam: com.musicly.musicly.jam.JamController
 
+    /** The user's own Telegram account (TDLib). Lazy: TDLib's native library is only loaded once they log in. */
+    val tg: com.musicly.musicly.tg.TgBackend by lazy { com.musicly.musicly.tg.TdBackend(this) }
+
     override fun onCreate() {
         super.onCreate()
         store = Store(this)
@@ -34,6 +37,7 @@ class MusiclyApp : Application() {
         device = Device(this)
         createPlayerChannel()
         library = Library(store, device)
+        library.tgUser.attach { tg } // logs the user's own Telegram account back in when they had one
         lyrics = LyricsController(player, store)
         jam = com.musicly.musicly.jam.JamController(library, player, store, device, cacheDir)
         player.onTrackStarted = library::recordPlay
