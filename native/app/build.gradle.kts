@@ -23,6 +23,8 @@ android {
         // Keep above the Flutter releases (3001) so it installs over them.
         versionCode = 4001
         versionName = "2.0.0-preview2"
+        // TDLib ships ~20 MB of native code per ABI; keep phones only (no x86 emulators).
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
     signingConfigs {
@@ -91,6 +93,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:5.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("io.github.tdlibx:td-ktx-android:1.8.56-RC10")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     testImplementation("org.robolectric:robolectric:4.17")
