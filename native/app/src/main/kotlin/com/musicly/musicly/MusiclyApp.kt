@@ -36,6 +36,7 @@ class MusiclyApp : Application() {
         player = PlayerController(this, audio, store)
         device = Device(this)
         createPlayerChannel()
+        trimTelegramCache()
         library = Library(store, device)
         library.tgUser.attach { tg } // logs the user's own Telegram account back in when they had one
         lyrics = LyricsController(player, store)
@@ -69,5 +70,27 @@ class MusiclyApp : Application() {
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
         manager.createNotificationChannel(channel)
+    }
+
+    /**
+     * Songs streamed with a Telegram account stay in cache/td-files. Keep that
+     * folder under 300 MB by deleting the oldest files (they download again if needed).
+     */
+    private fun trimTelegramCache() {
+        Thread {
+            try {
+                val dir = java.io.File(cacheDir, "td-files")
+                val files = dir.walkTopDown().filter { it.isFile }.toList()
+                var total = files.sumOf { it.length() }
+                val limit = 300L * 1024 * 1024
+                if (total <= limit) return@Thread
+                for (f in files.sortedBy { it.lastModified() }) {
+                    if (total <= limit) break
+                    total -= f.length()
+                    f.delete()
+                }
+            } catch (_: Exception) {
+            }
+        }.start()
     }
 }
