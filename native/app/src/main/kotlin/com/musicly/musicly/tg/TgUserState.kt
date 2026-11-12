@@ -83,8 +83,10 @@ class TgUserState(
         } else null
 
     /** The app's built-in key, else an api_id / api_hash the user saved on this phone. */
-    fun apiKey(): Pair<Int, String>? {
-        builtInKey?.let { return it }
+    fun apiKey(): Pair<Int, String>? = builtInKey ?: savedKey()
+
+    /** Only the key the user typed in and saved (ignores the built-in one). */
+    fun savedKey(): Pair<Int, String>? {
         val id = store.long(KEY_ID)?.toInt() ?: return null
         val hash = store.string(KEY_HASH) ?: return null
         return if (id > 0 && hash.isNotBlank()) id to hash else null

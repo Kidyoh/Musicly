@@ -32,10 +32,10 @@ android {
         minSdk = 24
         targetSdk = 35
         // Keep above the Flutter releases (3001) so it installs over them.
-        versionCode = 4003
+        versionCode = 4004
         buildConfigField("int", "TG_API_ID", tgApiId.toIntOrNull()?.toString() ?: "0")
         buildConfigField("String", "TG_API_HASH", "\"${tgApiHash.filter { it.isLetterOrDigit() }}\"")
-        versionName = "2.1.1-preview4"
+        versionName = "2.1.2-preview5"
         // TDLib ships ~20 MB of native code per ABI; keep phones only (no x86 emulators).
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }

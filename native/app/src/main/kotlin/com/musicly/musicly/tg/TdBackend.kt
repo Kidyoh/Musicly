@@ -84,7 +84,12 @@ class TdBackend(context: Context) : TgBackend {
 
     override suspend fun start(apiId: Int, apiHash: String) {
         lifecycle.withLock {
-            if (client != null) return
+            if (client != null) {
+                // A client that failed to come up is thrown away so "Try again" really restarts it.
+                if (state.value !is TgAuth.Failed) return
+                client?.close()
+                client = null
+            }
             this.apiId = apiId
             this.apiHash = apiHash
             state.value = TgAuth.Starting
@@ -103,16 +108,32 @@ class TdBackend(context: Context) : TgBackend {
             paramsSent = false
             loggingOut = false
             val c = try {
-                TdJsonClient(::onUpdate)
+                TdJsonClient(::onUpdate, ::onEngineFatal)
             } catch (e: Throwable) {
-                state.value = TgAuth.Failed("Telegram's library could not start on this phone.")
+                state.value = TgAuth.Failed("Telegram's library could not start on this phone (${e.javaClass.simpleName}: ${e.message ?: "no details"}).")
                 return
             }
             client = c
+            c.start()
+            watchStartup(c)
             // The first request wakes TDLib up; it then reports the authorization state.
             try {
                 call(buildJsonObject { put("@type", "setLogVerbosityLevel"); put("new_verbosity_level", 1) })
             } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun onEngineFatal(reason: String) {
+        if (state.value !is TgAuth.Ready) state.value = TgAuth.Failed("Telegram's engine stopped ($reason).")
+    }
+
+    /** If Telegram says nothing for 25 seconds the engine is stuck: show a clear message instead of waiting forever. */
+    private fun watchStartup(c: TdJsonClient) {
+        scope.launch {
+            delay(25_000)
+            if (client === c && state.value is TgAuth.Starting) {
+                state.value = TgAuth.Failed("Telegram's engine started but did not answer (no first state after 25 s). Check your connection and try again.")
             }
         }
     }

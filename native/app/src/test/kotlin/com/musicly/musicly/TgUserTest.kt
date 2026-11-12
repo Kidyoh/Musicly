@@ -103,7 +103,7 @@ class TgUserTest {
         again.load()
         assertEquals(60, again.chat(chat.id)!!.tracks.size)
         assertTrue(again.isDone(chat.id))
-        assertEquals(123456 to "0123456789abcdef0123456789abcdef", again.apiKey())
+        assertEquals(123456 to "0123456789abcdef0123456789abcdef", again.savedKey())
     }
 
     @Test
@@ -118,7 +118,7 @@ class TgUserTest {
         assertTrue(state.chats.isEmpty())
         assertNull(store.string("tguser"))
         assertTrue("logout" in fake.calls)
-        assertEquals(5, state.apiKey()?.first)
+        assertEquals(5, state.savedKey()?.first)
     }
 
     // ---- backups never carry the key or the session ----------------------------------------

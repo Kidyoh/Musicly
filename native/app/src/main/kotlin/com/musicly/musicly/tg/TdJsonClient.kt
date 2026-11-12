@@ -18,7 +18,10 @@ import kotlin.concurrent.thread
  * on the receiving thread, so keep that quick. Nothing is ever logged here: requests carry
  * phone numbers, codes and passwords.
  */
-internal class TdJsonClient(private val onUpdate: (type: String, json: String) -> Unit) {
+internal class TdJsonClient(
+    private val onUpdate: (type: String, json: String) -> Unit,
+    private val onFatal: (reason: String) -> Unit = {},
+) {
     private val clientId = JsonClient.create()
     private val pending = ConcurrentHashMap<String, CompletableDeferred<String>>()
     private val counter = AtomicLong()
@@ -26,11 +29,15 @@ internal class TdJsonClient(private val onUpdate: (type: String, json: String) -
     @Volatile
     private var running = true
 
-    private val receiver = thread(name = "tdlib-receive", isDaemon = true) {
+    /** Starts reading from TDLib. Called after the owner has stored this client, so no update can arrive early. */
+    fun start() = thread(name = "tdlib-receive", isDaemon = true) {
         while (running) {
             val text = try {
                 JsonClient.receive(clientId, 1.0)
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
+                // Say why: a silent end here would leave the app waiting forever.
+                running = false
+                onFatal("${t.javaClass.simpleName}: ${t.message ?: "no details"}")
                 break
             } ?: continue
             val extra = extraOf(text)
