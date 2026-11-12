@@ -141,7 +141,7 @@ fun TgLoginScreen() {
                 auth is TgAuth.Off || auth is TgAuth.Starting -> {
                     Head("Your Telegram account", "Starting Telegram…")
                     Spinner("Just a moment")
-                    if (actionError != null) Failure(actionError, onRetry = { run { user.begin() } }, onChangeKey = { editKey = true })
+                    if (actionError != null) Failure(actionError, onRetry = { run { user.begin() } }, onChangeKey = { editKey = true }, hideKeyOption = user.builtInKey != null)
                 }
                 auth is TgAuth.WaitPhone -> {
                     val a = auth as TgAuth.WaitPhone
@@ -169,7 +169,7 @@ fun TgLoginScreen() {
                 auth is TgAuth.Failed -> {
                     val a = auth as TgAuth.Failed
                     Head("Your Telegram account", "That didn't work.")
-                    Failure(a.message, onRetry = { run { user.begin() } }, onChangeKey = { editKey = true })
+                    Failure(a.message, onRetry = { run { user.begin() } }, onChangeKey = { editKey = true }, hideKeyOption = user.builtInKey != null)
                 }
             }
             if (!needKey && (auth is TgAuth.WaitPhone || auth is TgAuth.WaitCode || auth is TgAuth.WaitPassword || auth is TgAuth.Off)) {
@@ -281,13 +281,13 @@ private fun PasswordStep(a: TgAuth.WaitPassword, error: String?, busy: Boolean, 
 }
 
 @Composable
-private fun Failure(message: String, onRetry: () -> Unit, onChangeKey: () -> Unit) {
+private fun Failure(message: String, onRetry: () -> Unit, onChangeKey: () -> Unit, hideKeyOption: Boolean = false) {
     val p = palette()
     Text(message, color = Red, fontSize = 14.sp, lineHeight = 20.sp)
     Spacer(Modifier.height(16.dp))
     PillButton(AppIcons.refresh, "Try again", onRetry, Modifier.fillMaxWidth())
     Spacer(Modifier.height(4.dp))
-    Box(
+    if (!hideKeyOption) Box(
         Modifier.heightIn(min = 44.dp).clip(RoundedCornerShape(50)).clickable(onClick = onChangeKey).padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center,
     ) { Text("Use a different app key", color = p.ink, fontWeight = FontWeight.Medium, fontSize = 14.sp) }

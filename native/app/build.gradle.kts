@@ -12,6 +12,17 @@ val keystoreProperties = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
+// The app's own Telegram key (api_id / api_hash), one for every user, like any Telegram
+// client. It is read from native/tg-keys.properties (never committed) or the
+// TG_API_ID / TG_API_HASH environment variables. Without it the login screen asks
+// for a key instead.
+val tgKeys = Properties().apply {
+    val f = rootProject.file("tg-keys.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val tgApiId: String = (tgKeys.getProperty("api_id") ?: System.getenv("TG_API_ID") ?: "0").trim()
+val tgApiHash: String = (tgKeys.getProperty("api_hash") ?: System.getenv("TG_API_HASH") ?: "").trim()
+
 android {
     namespace = "com.musicly.musicly"
     compileSdk = 36
@@ -22,6 +33,8 @@ android {
         targetSdk = 35
         // Keep above the Flutter releases (3001) so it installs over them.
         versionCode = 4002
+        buildConfigField("int", "TG_API_ID", tgApiId.toIntOrNull()?.toString() ?: "0")
+        buildConfigField("String", "TG_API_HASH", "\"${tgApiHash.filter { it.isLetterOrDigit() }}\"")
         versionName = "2.1.0-preview3"
         // TDLib ships ~20 MB of native code per ABI; keep phones only (no x86 emulators).
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
@@ -55,7 +68,10 @@ android {
     // (they are extracted at install instead of mapped from the APK).
     packaging { jniLibs { useLegacyPackaging = true } }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 
     testOptions { unitTests { isReturnDefaultValues = true; isIncludeAndroidResources = true } }
 

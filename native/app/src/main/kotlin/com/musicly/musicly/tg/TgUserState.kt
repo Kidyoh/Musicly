@@ -76,8 +76,15 @@ class TgUserState(
 
     // ---- app key ---------------------------------------------------------------------------
 
-    /** The user's own api_id / api_hash, if saved on this phone. */
+    /** The key built into this app (see build.gradle.kts), or null in builds made without one. */
+    val builtInKey: Pair<Int, String>?
+        get() = if (com.musicly.musicly.BuildConfig.TG_API_ID > 0 && com.musicly.musicly.BuildConfig.TG_API_HASH.isNotBlank()) {
+            com.musicly.musicly.BuildConfig.TG_API_ID to com.musicly.musicly.BuildConfig.TG_API_HASH
+        } else null
+
+    /** The app's built-in key, else an api_id / api_hash the user saved on this phone. */
     fun apiKey(): Pair<Int, String>? {
+        builtInKey?.let { return it }
         val id = store.long(KEY_ID)?.toInt() ?: return null
         val hash = store.string(KEY_HASH) ?: return null
         return if (id > 0 && hash.isNotBlank()) id to hash else null
